@@ -1,1 +1,0 @@
-Projects run on the Kintex7 FPGA
