@@ -1,78 +1,55 @@
 `timescale 1ns / 1ps
-// An image gradient is a directional change in the intensity or color in an image
-// At each image point, the gradient vector points in the direction of largest possible intensity increase, and the length of the gradient vector corresponds to the rate of change in that direction
 
-// Module instantiation
-module Gradients(
-    // Required clock input
-	input clk,
-	
-	// Control signal coming from the SDK to verify that the full image is in BRAM and ready for use
-    input [31:0] BRAM_Full,
-	
-	// Start signal for this IP that means the user defined parameters are ready for use
+module Gradients_Multi_Subs_Multi_shapes_232_448(
+    input clk,
     input param_ready,
-	
-	// User defined inputs from the parameters IP
     input [31:0] width_,
     input [31:0] height_,
-		
-	// BRAM control signals. Reads intensities and writes gradients
     input [31:0] dout_ints,
     output reg grad_ea,
     output reg ints_ea,
     output reg grad_wea,
     output reg ints_wea,
-    output reg [11:0] addr_ints,
-    output reg [11:0] addr_grad_x_,
-    output reg [11:0] addr_grad_y_,
+    output reg [16:0] addr_ints,
+    output reg [16:0] addr_grad_x_,
+    output reg [16:0] addr_grad_y_,
     output reg [31:0] din_grad_x_,
     output reg [31:0] din_grad_y_, 
-    output [31:0] din_ints,
-	
-	// Done signal for this IP
-    output reg grad_done
+    output [31:0] din_ints, 
+    output reg grad_done,
+    input [31:0] new_frame,
+    input [31:0] in_frame_counter,
+    output reg [31:0] out_frame_counter,
+    output reg grad_busy = 1'b0,
+    output reg [127:0] grad_idle_counter = 128'b0
 );
 
-// Number of bits for the image size; will need to change as iamge size is scaled up (this model uses 64x48 image = 3,072 pixels = 98,304 bits)
-parameter image_size = 98303; // 8 pixels = 256 bits; 255 with -1 already subtracted. 3,072 pixels = 98,304 bits, 98,303 with -1 already subtracted
 
-// State transistion registers
+parameter image_size = 3325951; // 8 pixels, 256 bits, 255 with -1 already subtracted
+                                // 103,936 pixels, 3,325,952 bits, 3,325,951 with -1 subtracted
 reg [5:0] state =  6'b0; 
 reg [5:0] temp_state;
-
-// Updated image width and height with border taken into account
-reg [31:0] width_2 = 32'b111110; //62 (-2 for the border (border = 2 pixels)) 
-reg [31:0] height_2 = 32'b101110; //46 (-2 for the border (border = 2 pixels)) 
-
-// Weights for the intensities (embedded weight within DICE)
+reg [31:0] width_2 = 32'b110111110; //446
+reg [31:0] height_2 = 32'b11100110; //230
 reg [31:0] grad_c1_ = 32'b00111101101010011111101111100111; //0.083
 reg [31:0] grad_c2_ = 32'b10111111010000000000000000000000; //-0.75
-
-// Variables for IP function (loops & counters)
 reg [31:0] t1, t2, t3, t4, t5, t6;
-integer s, t, i; // loop index counters
-integer counter = 0;
-integer factor = 32;
-integer counter_g = 0;
-reg [1:0] clk_counter_a = 2'b00;
-reg [1:0] clk_counter_b = 2'b00;
 
-// Variables for arithmetic functions
 reg [31:0] Multiplier_Float;
 reg [7:0]e_sum,exponent;
 reg [47:0]prod;
 reg [23:0] product;
 reg multiplier_done;
+
+reg done;
 reg [31:0] a, b, Subtractor_Float, Adder_Float;
 reg [7:0]e1,e2,exy;
 reg s1,s2,sr,sign;
 reg [23:0]m1,m2,mx,my;
 reg [24:0]mxy,mxy2;
 reg [7:0] diff,x;
-reg done;
 
-// Variables for debug
+//for debug
 integer debug_in_b001 = 0;
 reg debug_in_b010_else;
 integer debug_in_b001_if = 0;
@@ -80,26 +57,35 @@ reg [31:0] debug_a_in_b010, debug_a_in_b100000, debug_a_in_b100101, debug_a_i_b1
 reg [31:0] debug_grad_out, debug_grad_inside;
 reg [31:0] debug_addr_grad_x_;
    
+integer s, t, i; // loop index counters
+integer counter = 0;
+integer factor = 32;
+integer counter_g = 0;
+reg [1:0] clk_counter_a = 2'b00;
+reg [1:0] clk_counter_b = 2'b00;
+
 
 always @(posedge clk)
 begin
+    out_frame_counter = in_frame_counter;
         case(state)
         // State 0
         6'b000:
         begin
-			// IP starts when BRAM is ready with image data and user defined parameters are set
             t = 0;
-            if(param_ready == 1 && BRAM_Full == 32'b1)
+            if(param_ready == 1'b1 && new_frame == 32'b1)
             begin
-				// Pulling out image data from BRAM
                 state = 6'b001;
                 grad_ea = 1'b1;
                 ints_ea = 1'b1;
                 grad_wea = 1'b1;
                 ints_wea = 1'b0;
+                grad_busy = 1'b1;
             end
             else
             begin
+                grad_idle_counter = grad_idle_counter + 128'b1;
+                grad_busy = 1'b0;
                 grad_done = 1'b0;
                 state = 6'b000;
             end
@@ -109,9 +95,6 @@ begin
        6'b001:
        begin
             debug_in_b001 = debug_in_b001 + 1;
-			// Start of nested for-loops; if statements used ebcause for loops can't be used in verilog with an unknown upper bound
-			// Start of outer loop
-			// t is the outer loop counter, s is the inner loop counter
             if(t < height_) 
             begin
                 debug_in_b001_if = debug_in_b001_if + 1;
@@ -127,12 +110,8 @@ begin
         // State 2
         6'b010: 
         begin
-			// Start of inner loop
             if(s < width_)
             begin
-				// X
-				// Computes gradients for the top border in the x direction
-				// 2 is related to the border pixels (simple subtraction of the intensities)
                 if(s < 2)
                 begin
                     if(clk_counter_a == 2'b10)
@@ -162,8 +141,6 @@ begin
                         state = 6'b010;
                     end                   
                 end
-				
-				// Computes gradients for the bottom border in the x direction (simple subtraction of the intensities)
                 else if(s >= width_2)
                 begin
                     if(clk_counter_a == 2'b10)
@@ -193,8 +170,6 @@ begin
                         state = 6'b010;
                     end  
                 end
-				
-				// Start of inner image gradient computing in the x direction (weighted subtraction of the intensities)
                 else
                 begin
                     a = grad_c1_;
@@ -219,8 +194,6 @@ begin
                 state = 6'b001;
             end
         end
-		
-		// Computing the gradients in the x direction for the inner portion of the image (t1-t6/state 0011-1000)
         6'b11:
         begin
             t1 = Multiplier_Float;
@@ -309,10 +282,6 @@ begin
             addr_grad_x_ = t*width_+s;
             debug_addr_grad_x_ = addr_grad_x_; 
             din_grad_x_ = Subtractor_Float;
-			
-			// Y
-			// Computes gradients for the top border in the y direction
-			// 2 is related to the border pixels (simple subtraction of the intensities)
             if(t < 2)
             begin
                 if(clk_counter_a == 2'b10)
@@ -342,8 +311,6 @@ begin
                     state = 6'b1001;
                 end                
             end
-			
-			// Computes gradients for the bottom border in the y direction (simple subtraction of the intensities)
             else if(t >= height_2)
             begin
                 if(clk_counter_a == 2'b10)
@@ -373,8 +340,6 @@ begin
                     state = 6'b1001;
                 end
             end
-			
-			// Start of inner image gradient computing in the y direction (weighted subtraction of the intensities)
             else
             begin 
                 a = grad_c1_;
@@ -393,8 +358,6 @@ begin
                 end                      
             end                        
         end
-		
-		// Computing the gradients in the y direction for the inner portion of the image (t1-t6/state 1010-1111)
         6'b1010:
         begin
             t1 = Multiplier_Float;
@@ -490,24 +453,17 @@ begin
         begin
             //grad_x_[((t*width_+s)*32+31)-:32] = Subtractor_Float; //from 01  
             //addr_grad_x_ = t*width_+s; 
-            //din_grad_x_ = Subtractor_Float;  
-			
-			// BRAM interfacing
+            //din_grad_x_ = Subtractor_Float;            
             grad_ea = 1'b1;
             ints_ea = 1'b1;
             grad_wea = 1'b0;
-            ints_wea = 1'b0;
-			
-			// IP is done
-            grad_done = 1'b1; 
+            ints_wea = 1'b0;        
+            grad_done = 1'b1;
+            grad_busy = 1'b0;
+            state = 6'b000000;
         end
-		
-		
-		
-		
-		
-		// Floating point functions (functions are contuinally being updated)
-        //////////////////////////// ADDER //////////////////////////// 
+
+        ////////////////////////////ADDER //////////////////////////// 
         6'b100000: //3'b000:
         begin
             debug_a_in_b100000 = a;
@@ -615,9 +571,7 @@ begin
             Subtractor_Float = Adder_Float;
             state = temp_state;
         end
-		
-		
-        //////////////////////////// SUBTRACTOR //////////////////////////// 
+        ////////////////////////////SUBTRACTOR //////////////////////////// 
         6'b100101: //subtractor
         begin
             debug_a_in_b100101 = a;
@@ -638,9 +592,7 @@ begin
                 state = 6'b100000; //adder
             end
         end
-		
-		
-        //////////////////////////// MULTIPLIER ////////////////////////////    
+        ////////////////////////////MULTIPLIER ////////////////////////////    
         6'b100110:
         begin
                 s1 = a[31]; //Sign bit
