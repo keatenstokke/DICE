@@ -1,60 +1,60 @@
 `timescale 1ns / 1ps
 
-// Module instatiation
-module Gamma(
-	// REquired clock input
+module Gamma_Multi_Subs_Multi_Shapes_232_448(
     input clock,
-	
-	// Control signal from SDK
-    input [31:0] BRAM_Full,
-	
-	// Start signals from prior IPs
     input ready_Params,
     input ready_Grad,
     input ready_Coord,
-	
-	// Inputs from prior IPs
+    input [31:0] num_of_subsets,
     input [31:0] optimization_method_,
     input [31:0] correlation_routine_,
     input [31:0] num_pixels,
-    input [287:0] x, //[0:728]
-    input [287:0] y, //[0:728]
     input [31:0] cx_, 
     input [31:0] cy_,
-	
-	// Inputs from BRAM
+    input [31:0] base_address,
+    input [31:0] num_pxl_Int,
+    input [31:0] num_pxl_FP,
     input [31:0] dout_ref_ints,
     input [31:0] dout_def_ints,
     input [31:0] dout_grad_x_,
     input [31:0] dout_grad_y_,
-	
-	// BRAM control signals
-    output reg [11:0] addr_ref_ints,
-    output reg [11:0] addr_def_ints,
-    output reg [11:0] addr_grad_x_,
-    output reg [11:0] addr_grad_y_,
-	
-	// Done signal for this IP
+    input [31:0] x,
+    input [31:0] y,
+    output reg sub_cood_ea_x,
+    output reg sub_cood_ea_y,
+    output reg sub_cood_we_x,
+    output reg sub_cood_we_y,
+    output reg [15:0] sub_cood_addr_x,
+    output reg [15:0] sub_cood_addr_y,
+    output reg [16:0] addr_ref_ints,
+    output reg [16:0] addr_def_ints,
+    output reg [16:0] addr_grad_x_,
+    output reg [16:0] addr_grad_y_,
     output reg gam_done,
-	
-	// Output results from this IP
-    output [31:0] disp_x,
-    output [31:0] disp_y,
-    output [31:0] disp_z,
-	
-	// Internal register done signal that is used in the SDK
-    output reg [31:0] Process_Done
+    output reg [31:0] disp_x,
+    output reg [31:0] disp_y,
+    output reg [31:0] disp_z,
+    output reg [31:0] Process_Done,
+    input [31:0] new_frame,
+    output reg gam_new_subset = 1'b0,
+    input gam_interface_done,
+    output reg [31:0] gid = 32'b0,
+    output reg results_done,
+    output reg [127:0] gam_idle_counter = 128'b0,
+    output reg gam_busy = 1'b0
 );
  
-parameter N = 2; //# of subsets
+parameter N = 14; //# of subsets
 reg [1:0] clk_counter_a = 2'b0;
 reg [1:0] clk_counter_b = 2'b0;
+reg [1:0] clk_counter_scx = 2'b0;
+reg [1:0] clk_counter_scy = 2'b0;
 reg [95:0] residuals_out;    
 reg [31:0] SUBSET_DISPLACEMENT_X_FS [0:N];
 reg [31:0] SUBSET_DISPLACEMENT_Y_FS [0:N];
 reg [31:0] ROTATION_Z_FS [0:N];
 reg [31:0] subset_gid;
-reg [31:0] gid = 32'b0; //global id of each subset
+//reg [31:0] gid = 32'b0; //global id of each subset
 reg [31:0] prev_u, prev_v, prev_t;
 reg [31:0] initialize_out;
 reg [31:0] GmF;
@@ -63,9 +63,9 @@ reg [31:0] sumF;
 reg [31:0] sumG;
 reg [31:0] sfG, sfF, mfgr, mfrr, Hij, mfhh10, mfhh01, det_h, mfhh10_mfhh01, norm_H, cond_2x2;
 reg [31:0] mfdd, dfdd, norm_Hi, mfhq;
-reg [31:0] q [0:2]; //N
-reg [31:0] H [0:2][0:2]; //N
-reg [31:0] def_update [0:2]; //N
+reg [31:0] q [0:N];
+reg [31:0] H [0:N][0:N];
+reg [31:0] def_update [0:N];
 reg [31:0] old_t, old_v, old_u;
 reg [31:0] def_imgs_ [0:N];
 reg [31:0] prev_imgs_ [0:N];
@@ -76,7 +76,8 @@ reg [8:0] map_to_u_v_theta_temp_state, insert_motion_temp_state, map_temp_state,
 reg [8:0] interpolate_bilinear_temp_state, interpolate_grad_x_bilinear_temp_state, interpolate_grad_y_bilinear_temp_state;
 reg [8:0] sin_temp_state, cos_temp_state, asin_temp_state, acos_temp_state;
 reg [8:0] Float_to_Int_temp_state;
-reg [8:0] subset_is_active = 9'b111111111; //# subset pixels
+// The current version does not support this feature (pixel deactivation)
+//reg [8:0] subset_is_active = 9'b111111111; //# subset pixels
 reg [1:0] interp = 2'b00;
 reg use_incremental_formulation_ = 1'b1;
 reg converged = 1'b1; //????????????????????
@@ -92,28 +93,27 @@ reg [31:0] subset_global_id [0:N]; //N = # subsets
 reg initial_guess_4_out;
 reg insert_motion_out;
 reg closest_triad_out;
-reg [31:0] centroid_x = 32'b01000001111100000000000000000000; //cx_
-reg [31:0] centroid_y = 32'bb01000001111100000000000000000000;//cy_
 reg [31:0] QUAD_F_FS, QUAD_L_FS, QUAD_A_FS, QUAD_B_FS, QUAD_G_FS, QUAD_H_FS;
 reg [31:0] QUAD_C_FS, QUAD_D_FS, QUAD_E_FS;
 reg [31:0] QUAD_I_FS, QUAD_J_FS, QUAD_K_FS;
-reg [8:0] is_active_ = 9'b111111111; //# subset pixels
+// The current version does not support this feature (pixel deactivation)
+//reg [8:0] is_active_ = 9'b111111111; //# subset pixels
 reg [31:0] neighbors_ [0:1];
 reg [31:0] subset_size = 32'b01000000010000000000000000000000;
 reg [31:0] intensities_ [0:8];
 reg [31:0] offset_x = 32'b0;
 reg [31:0] offset_y = 32'b0;
-reg [31:0] width = 32'b01000010100000000000000000000000; //64
-reg [31:0] height = 32'b01000010010000000000000000000000; //48
+reg [31:0] width = 32'b01000011111000000000000000000000; //448
+reg [31:0] height = 32'b01000011011010000000000000000000; //232
 reg has_gradients_ = 1'b1;
-reg [31:0] grad_x [0:3071];
-reg [31:0] grad_y [0:3071];
+// for 232*448
+reg [31:0] grad_x [0:103935];
+reg [31:0] grad_y [0:103935];
 reg [31:0] guess_t, guess_v, guess_u;
 
-integer num_pixels_ = 9; //for subset
+//integer num_pixels_ = 9; //for subset
 integer state_counter = 0;
 integer subset_index = 0;
-integer local_num_subsets_ = 1;
 integer num_iterations;
 integer max_solve_its = 25; // for fast method
 integer solve_it = 0;
@@ -127,9 +127,6 @@ integer counter_int = 0;
 integer counter_grad = 0;
 integer factor = 32;
 
-assign disp_x = SUBSET_DISPLACEMENT_X_FS[gid];
-assign disp_y = SUBSET_DISPLACEMENT_Y_FS[gid]; 
-assign disp_z = ROTATION_Z_FS[gid];
 //////////////////////////////// for new functions ///////////////////////////
     reg [31:0] a; 
     reg [31:0] b;
@@ -237,9 +234,7 @@ assign disp_z = ROTATION_Z_FS[gid];
     reg [31:0] fti_s_output_z;
     reg [31:0] Float_to_Int;
     integer fti_i;
-	
-	
-    // Signals for debug
+    //for debug
     reg debug_in_b1011010, debug_in_b1011011, debug_in_b1011100, debug_in_b10001100;
     integer debug_state_counter = 0;
     reg debug_in_b1111101,debug_in_b1111110,debug_in_b1111111, debug_in_b10000011;
@@ -260,29 +255,60 @@ assign disp_z = ROTATION_Z_FS[gid];
     reg debug_in_b000100111, debug_in_b000101001, debug_in_b000101010;
     reg [31:0] debug_a_in_b000010110, debug_b_in_b000010110, debug_i_in_b000010110, debug_mfrr_in_b000010111;
     reg [31:0] debug_i_in_b000010011,debug_i_in_b000010011_if, debug_i_in_b000010011_else, debug_i_in_b000010110_if;
-        
+    //for multiple subsets
+    reg [31:0] subset_range_selection;
+    
 always @(posedge clock)
 begin
     case (state)
     9'b000000000:
     begin 
-		// Start the IP if the previous IPs are completed
-        if(ready_Params == 1'b1 && ready_Grad == 1'b1 && ready_Coord == 1'b1 && BRAM_Full == 32'b1)
+        if(ready_Params == 1'b1 && ready_Coord == 1'b1 && ready_Grad == 1'b1)
         begin
-            if(use_incremental_formulation_ == 1'b1)
-            begin
-                SUBSET_DISPLACEMENT_X_FS[gid] = 32'b0;
-                SUBSET_DISPLACEMENT_Y_FS[gid] = 32'b0; 
-                ROTATION_Z_FS[gid] = 32'b0;  
-            end
-            state = 9'b000000001;
-            debug_state_counter = debug_state_counter + 1;
+            //gam_done = 1'b0;
+            // Setting the BRAM subset_coordinates control signals
+            sub_cood_ea_x = 1'b1;
+            sub_cood_ea_y = 1'b1;
+            sub_cood_we_x = 1'b0;
+            sub_cood_we_y = 1'b0;
+            gam_busy = 1'b1;
+            state = 'b101110010;       
         end
         else
         begin
             gam_done = 1'b0;
             Process_Done = 32'b0;
             state = 'b000000000;
+        end
+    end
+    'b101110010:
+    begin
+        results_done = 1'b0;
+        if(gid < num_of_subsets)
+        begin
+            gam_new_subset = 1'b1;
+            if(gam_interface_done == 1'b0)
+            begin
+                state = 'b101110010;
+            end
+            else //ready to start the subset
+            begin
+                gam_new_subset = 1'b0;
+                subset_range_selection = gid * 32 + 31;
+                if(use_incremental_formulation_ == 1'b1)
+                begin
+                    SUBSET_DISPLACEMENT_X_FS[gid] = 32'b0;
+                    SUBSET_DISPLACEMENT_Y_FS[gid] = 32'b0; 
+                    ROTATION_Z_FS[gid] = 32'b0;  
+                end
+                state = 9'b000000001;
+                debug_state_counter = debug_state_counter + 1;
+            end
+        end
+        else
+        begin
+            gam_busy = 1'b0;
+            state = 'b000110110; //Process_Done
         end
     end
     9'b000000001:
@@ -325,7 +351,7 @@ begin
     'b000000010:
     begin
         debug_state_counter = debug_state_counter + 1;  
-        if(subset_index < local_num_subsets_)
+        if(subset_index < num_of_subsets)
         begin
             //subset_gid = subset_global_id(subset_index);
             subset_gid = subset_global_id_function(subset_index);
@@ -350,7 +376,7 @@ begin
     9'b000000100:
     begin
         debug_state_counter = debug_state_counter + 1;  
-        if(subset_index < local_num_subsets_)
+        if(subset_index < num_of_subsets)
         begin
             //check_for_blocking_subsets(subset_gid);
             //generic_correlation_routine(subset_lid); ****
@@ -426,7 +452,8 @@ begin
         if(index < num_pixels)
         begin
             state_counter = state_counter + 1;
-            if(subset_is_active[index] == 1'b1)
+            // The current version does not support this feature (pixel deactivation)
+            /*if(subset_is_active[index] == 1'b1)
             begin
                 //{meanG, sumG} = mean(1'b1);
                 mean_ref_def = 1'b1;
@@ -439,7 +466,12 @@ begin
                 state_counter = state_counter + 1; 
                 index = index + 1;
                 state = 'b000001010;
-            end
+            end*/
+            
+            //{meanG, sumG} = mean(1'b1);
+            mean_ref_def = 1'b1;
+            state = 'b11000010; //mean
+            mean_temp_state = 'b000001011;
         end
         else
         begin
@@ -529,19 +561,46 @@ begin
         begin
             debug_in_b000010000_else = 1'b1;
             state_counter = state_counter + 1; 
-            state = 'b000010001; //15
+            state = 'b101110000; //15
         end
     end
+    'b101110000:
+    begin
+        //residuals_out = residuals(x[index*32 + 31-:32], y[index*32 + 31-:32], cx_, cy_, grad_x_[index*32+31-:32],grad_y_[index*32+31-:32], use_ref_grads); //indexing changed
+        // wait two clock cycles 
+        //residuals_x = x[index*32 + 31-:32];
+        //residuals_y = y[index*32 + 31-:32];
+        if(clk_counter_scx == 2'b10)
+        begin
+            residuals_x = x;
+            clk_counter_scx =  2'b00;
+            clk_counter_scy = 2'b01;
+            state = 'b101110000;                       
+        end
+        else if(clk_counter_scy == 2'b00)
+        begin
+            sub_cood_addr_x = base_address + index;
+            clk_counter_scx = clk_counter_scx + 1;
+            state = 'b101110000;
+        end
+        else if(clk_counter_scy == 2'b11)
+        begin
+            residuals_y = y;
+            clk_counter_scy =  2'b00;
+            //go to the next state
+            state = 'b000010001;                 
+        end
+        else
+        begin
+            sub_cood_addr_y = base_address + index;
+            clk_counter_scy = clk_counter_scy + 1;
+            state = 'b101110000;
+        end
+     end   
     'b000010001:
     begin
         debug_in_b000010001 = 1'b1;
         state_counter = state_counter + 1;
-        //residuals_out = residuals(x[index*32 + 31-:32], y[index*32 + 31-:32], cx_, cy_, grad_x_[index*32+31-:32],grad_y_[index*32+31-:32], use_ref_grads); //indexing changed
-        residuals_x = x[index*32 + 31-:32];
-        residuals_y = y[index*32 + 31-:32];
-        residuals_cx = cx_;
-        residuals_cy = cy_;
-        residuals_use_ref_grads = 1'b1; 
         if(clk_counter_a == 2'b10)
         begin
             residuals_gx = dout_grad_x_;
@@ -559,6 +618,9 @@ begin
         begin
             residuals_gy = dout_grad_y_;
             clk_counter_b =  2'b00;
+            residuals_cx = cx_;
+            residuals_cy = cy_;
+            residuals_use_ref_grads = 1'b1; 
             state = 'b11100111; //residuals;
             residuals_temp_state = 'b000010010;                     
         end
@@ -942,12 +1004,12 @@ begin
         end
         else
         begin
-            state = 'b000110110;
+            state = 'b101110001;
         end
     end
     'b000110011: //'b000110010:
     begin
-        if(i < local_num_subsets_)
+        if(i < num_of_subsets)
         begin
             //accumulated_disp = Adder_Float(accumulated_disp, SUBSET_DISPLACEMENT_X_FS[i]);
             a = accumulated_disp;
@@ -957,7 +1019,7 @@ begin
         end
         else
         begin
-            state = 'b000110110;
+            state = 'b101110001;
         end
     end
     'b000110100: //'b000110011:
@@ -978,14 +1040,43 @@ begin
     'b000110110: //'b000110101:
     begin
         Process_Done = 32'b1;
-        gam_done = 1'b1;
-        //update_frame_id(); ****
+        //gam_done = 1'b1;
+        if(new_frame == 32'b0)
+        begin
+            gam_idle_counter = gam_idle_counter + 128'b1;
+            state = 'b000110110;
+        end
+        else if(new_frame == 32'b1)
+        begin
+            Process_Done = 32'b0;
+            gam_done = 1'b0;
+            gid = 32'b0;
+            state = 'b0;
+        end
+        else if(new_frame == 32'b10)
+        begin
+            gam_done = 1'b1;
+        end
     end
-
-
-
-	
-	///////////////////////////////////// Adder /////////////////////////////////////
+    'b101110001:
+    begin
+        disp_x[31:0] = SUBSET_DISPLACEMENT_X_FS[gid];
+        disp_y[31:0] = SUBSET_DISPLACEMENT_Y_FS[gid]; 
+        disp_z[31:0] = ROTATION_Z_FS[gid];
+        results_done = 1'b1;
+        gid = gid + 1;
+        state = 'b101110011;
+    end
+    'b101110011:
+    begin
+        state = 'b101110100;
+    end
+    'b101110100:
+    begin
+        state = 'b101110010;
+    end
+    
+    /////////////////////////////////////// new functions /////////////////////////////
      7'b1000000: //Adder
      begin
         s1 = a[31];
@@ -1089,10 +1180,6 @@ begin
         Subtractor_Float = Adder_Float;
         state = temp_state;
      end
-	 
-	 
-	 
-	///////////////////////////////////// Subtractor /////////////////////////////////////
      7'b1000101: //Subtractor
      begin
          if (b[30:0] == 31'b0)
@@ -1112,11 +1199,6 @@ begin
              state = 7'b1000000;
          end
      end
-	 
-	 
-	 
-	 
-	///////////////////////////////////// Multiplier /////////////////////////////////////
     9'b1000110: // Multiplier //b1000110
     begin
         s1 = a[31]; //Sign bit
@@ -1188,12 +1270,6 @@ begin
         multiplier_done = 1'b1;
         state = temp_state;
     end 
-	
-	
-	
-	
-	
-	///////////////////////////////////// Divider /////////////////////////////////////
     7'b1001100: //Divider
     begin
         x_mantissa = a[22:0];
@@ -1292,12 +1368,7 @@ begin
     begin
         Divider_Float[31:0] = {{z_sign}, {z_exponent}, {z_mantissa}}; 
         state = temp_state;   
-    end  
-
-
-
-
-	///////////////////////////////////// SQRT /////////////////////////////////////
+    end   
     7'b1010011: //4'b0000: SQRT
     begin
         x_mantissa = a[22:0];
@@ -1386,9 +1457,6 @@ begin
         SQRT[31] = y_sign;
         state = temp_state;
     end
-	
-	
-	///////////////////////////////////// cos /////////////////////////////////////
     9'b1011010: //cos
     begin
         a = a; 
@@ -1453,10 +1521,6 @@ begin
         state = cos_temp_state;    
         cos_done = 1'b1;
     end
-	
-	
-	
-	///////////////////////////////////// sin /////////////////////////////////////
     7'b1100001: //sin
     begin
         //t1 = Multiplier_Float (x, x); //x^2
@@ -1526,9 +1590,6 @@ begin
         state = sin_temp_state;
         sin_done = 1'b1;
     end
-	
-	
-	///////////////////////////////////// asin /////////////////////////////////////
     7'b1101001: //asin
     begin
         //t1 = Multiplier_Float(x, x);
@@ -1607,11 +1668,6 @@ begin
         state = asin_temp_state;
         asin_done = 1'b1;
     end
-	
-	
-	
-	
-	///////////////////////////////////// acos /////////////////////////////////////
     7'b1110010: //acos
     begin
         //t1 = Multiplier_Float(x, x);
@@ -1699,10 +1755,6 @@ begin
         state = acos_temp_state;
         acos_done = 1'b1;
     end
-	
-	
-	
-	///////////////////////////////////// gamma /////////////////////////////////////
     7'b1111100: //gamma_
     begin
         debug_in_b1111100 = 1'b1;
@@ -1713,9 +1765,10 @@ begin
     'b1111101:
     begin
         debug_in_b1111101 = 1'b1;
-        if(gamma_i < num_pixels_)
+        if(gamma_i < num_pxl_Int) //num_pixels_
         begin
-            if(is_active_[gamma_i] == 1'b1)
+            // The current version does not support this feature (pixel deactivation)
+            /*if(is_active_[gamma_i] == 1'b1)
             begin
                 //{mean_def, mean_sum_def} = mean(1'b1);
                 mean_ref_def = 1'b1;
@@ -1726,7 +1779,12 @@ begin
             begin
                 gamma_i = gamma_i + 1;
                 state = 'b1111101;
-            end
+            end*/
+            
+            //{mean_def, mean_sum_def} = mean(1'b1);
+            mean_ref_def = 1'b1;
+            state = 'b11000010; //mean
+            mean_temp_state = 'b1111110; 
         end
         else
         begin
@@ -1850,10 +1908,6 @@ begin
         debug_in_b10000111  = 1'b1;
         state = gamma_temp_state;
     end
-	
-	
-	
-	///////////////////////////////////// insert_motion /////////////////////////////////////
     'b10001000: //insert_motion
     begin
         QUAD_F_FS = im_u;
@@ -1902,10 +1956,6 @@ begin
         insert_motion = 1'b1;
         state = insert_motion_temp_state;
     end
-	
-	
-	
-	///////////////////////////////////// map_to_u_v_theta ///////////////////////////////////// **************
     'b10001101: //map_to_u_v_theta muvt_
     begin
         muvt_cxp = 32'b0;
@@ -2122,10 +2172,6 @@ begin
         debug_in_b10100010 = 1'b1;
         state = map_to_u_v_theta_temp_state;
      end
-	 
-	 
-	 
-	///////////////////////////////////// map ///////////////////////////////////// **************
      'b10100011: //map
      begin
         //dx = Subtractor_Float(x, cx); //dx
@@ -2400,10 +2446,6 @@ begin
          map[63:32] = Adder_Float;
          state = map_temp_state;
      end
-	 
-	 
-	 
-	///////////////////////////////////// mean ///////////////////////////////////// **************
      'b11000010: //mean
      begin
         mean_temp_sum = 32'b0;
@@ -2412,9 +2454,11 @@ begin
      end
      'b11000011:
      begin
-        if(i_mean < 1) ///////debug change to subset_size*subset_size
+        if(i_mean < num_pxl_Int) //for each subset
         begin
-            if(subset_is_active [i_mean] == 1'b1)
+                   
+            // The current version does not support this feature (pixel deactivation)
+            /*if(subset_is_active [i_mean] == 1'b1)
             begin
                 if(mean_ref_def == 1'b0)
                 begin
@@ -2457,6 +2501,43 @@ begin
             begin
                 i_mean = i_mean + 1;
                 state = 'b11000011;
+            end*/
+
+            if(mean_ref_def == 1'b0)
+            begin
+                //temp_sum = Adder_Float(temp_sum, ref_intensities_[i*32 + 31-:32]);                   
+                if(clk_counter_b == 2'b10)
+                begin
+                    b = dout_ref_ints;
+                    clk_counter_b =  2'b00;
+                    a = mean_temp_sum;
+                    state = 7'b1000000; //Adder
+                    temp_state = 'b11000100;                    
+                end
+                else
+                begin
+                    addr_ref_ints = i_mean;
+                    clk_counter_b = clk_counter_b + 1;
+                    state = 'b11000011;
+                end
+            end
+            else
+            begin
+                //temp_sum = Adder_Float(temp_sum, def_intensities_[i*32 + 31-:32]);             
+                if(clk_counter_b == 2'b10)
+                begin
+                    b = dout_def_ints;
+                    clk_counter_b =  2'b00;
+                    a = mean_temp_sum;
+                    state = 7'b1000000; //Adder
+                    temp_state = 'b11000100;                    
+                end
+                else
+                begin
+                    addr_def_ints = i_mean;
+                    clk_counter_b = clk_counter_b + 1;
+                    state = 'b11000011;
+                end
             end
         end
         else
@@ -2472,18 +2553,9 @@ begin
      end
      'b11000101: 
      begin
-        //subset_size_in_ieee = Multiplier_Float(subset_size, subset_size);
-        a = subset_size;
-        b = subset_size;
-        state = 7'b1000110; //Multiplier
-        temp_state = 'b11000110;
-     end
-     'b11000110:
-     begin
-        mean_subset_size_in_ieee = Multiplier_Float;
         //mean[63:32] = Divider_Float(temp_sum, subset_size_in_ieee);
         a = mean_temp_sum;
-        b = mean_subset_size_in_ieee;
+        b = num_pxl_FP;
         state = 7'b1001100; //Divider
         temp_state = 'b11000111;
      end
@@ -2493,10 +2565,6 @@ begin
         mean[31:0] = mean_temp_sum[31:0];
         state = mean_temp_state;
      end
-	 
-	 
-	 
-	///////////////////////////////////// initial_guess /////////////////////////////////////
      'b11001000: //initial_guess
      begin
         //if(global_path_search_required) **** NOT DONE
@@ -2521,9 +2589,6 @@ begin
         initial_guess_4_out = 1'b1;
         state = initial_guess_temp_state; //end of initial_guess
      end
-	 
-	 
-	///////////////////////////////////// initial_guess_4 /////////////////////////////////////
      'b11001011: //initial_guess_4
      begin
         // find the closes triad in the set:
@@ -2585,8 +2650,10 @@ begin
         begin
             ig4_best_gamma = ig4_gamma; //global
             //{best_t, best_v, best_u} = map_to_u_v_theta(centroid_x,centroid_y); //centroid_x(), centroid_y()
-            muvt_cx = centroid_x;
-            muvt_cy = centroid_y;
+            //muvt_cx = centroid_x[subset_range_selection-:32];           
+            //muvt_cy = centroid_y[subset_range_selection-:32];
+            muvt_cx = cx_;
+            muvt_cy = cy_;
             state = 'b10001101; //map_to_u_v_theta 
             map_to_u_v_theta_temp_state = 'b11010000;
         end
@@ -2620,10 +2687,6 @@ begin
      begin
         state = initial_guess_4_temp_state;
      end
-	 
-	 
-	 
-	///////////////////////////////////// initialize /////////////////////////////////////
      'b11010011: //'b1101110: //initialize //in SubsetSerial.cpp
      begin
         if(initialize_target == 1'b0) //maybe before function call 0 ref
@@ -2633,7 +2696,7 @@ begin
                 begin
                     a = dout_ref_ints;
                     clk_counter_a =  2'b00;
-                    if(initialize_i < num_pixels_)
+                    if(initialize_i < num_pxl_Int) //num_pixels_
                     begin
                         initialize_i = initialize_i + 1;
                         state = 'b11010011;
@@ -2657,7 +2720,7 @@ begin
                 begin
                     a = dout_def_ints;
                     clk_counter_a =  2'b00;
-                    if(initialize_i < num_pixels_)
+                    if(initialize_i < num_pxl_Int) //num_pixels_
                     begin
                         initialize_i = initialize_i + 1;
                         state = 'b11010011;
@@ -2684,15 +2747,40 @@ begin
      end
      'b11010101: //'b1110000:
      begin
-        if(initialize_i<num_pixels_)
+        if(initialize_i < num_pxl_Int) //num_pixels_
         begin
             //{mapped_y, mapped_x} = map(x_[i],y_[i],cx_,cy_);
-            map_x = x[initialize_i];
-            map_y = y[initialize_i];
-            map_cx = cx_;
-            map_cy = cy_;
-            state = 'b10100011; //map
-            map_temp_state = 'b11010110;
+            //map_x = x[initialize_i];
+            //map_y = y[initialize_i];
+            if(clk_counter_scx == 2'b10)
+            begin
+                map_x = x;
+                clk_counter_scx =  2'b00;
+                clk_counter_scy = 2'b01;
+                state = 'b11010101;                       
+            end
+            else if(clk_counter_scy == 2'b00)
+            begin
+                sub_cood_addr_x = base_address + initialize_i;
+                clk_counter_scx = clk_counter_scx + 1;
+                state = 'b11010101;
+            end
+            else if(clk_counter_scy == 2'b11)
+            begin
+                map_y = y;
+                clk_counter_scy =  2'b00;
+                //go to the next state
+                map_cx = cx_;
+                map_cy = cy_;
+                state = 'b10100011; //map
+                map_temp_state = 'b11010110;
+            end
+            else
+            begin
+                sub_cood_addr_y = base_address + initialize_i;
+                clk_counter_scy = clk_counter_scy + 1;
+                state = 'b11010101;
+            end           
         end
         else
         begin
@@ -2851,13 +2939,24 @@ begin
      'b11100011: //'b1111110:
      begin
         debug_in_b11100011 = 1'b1;
-        if(initialize_i < num_pixels_)
+        if(initialize_i < num_pxl_Int) //num_pixels_
         begin
             //t1 = Subtractor_Float(x_[i], offset_x);
-            a = x[initialize_i];
-            b = offset_x;
-            state = 7'b1000101; //Subtractor
-            temp_state = 'b11100100;
+            //a = x[initialize_i];
+            if(clk_counter_scx == 2'b10)
+            begin
+                a = x;
+                clk_counter_scx =  2'b00;
+                b = offset_x;
+                state = 7'b1000101; //Subtractor
+                temp_state = 'b11100100;                    
+            end
+            else
+            begin
+                sub_cood_addr_x = base_address + initialize_i;
+                clk_counter_scx = clk_counter_scx + 1;
+                state = 'b11100011;
+            end          
         end
         else
         begin
@@ -2869,10 +2968,21 @@ begin
      begin
         initialize_t1 = Subtractor_Float;
         //t2 = Subtractor_Float(y_[i], offset_y);
-        a = y[initialize_i];
-        b = offset_y;
-        state = 7'b1000101; //Subtractor
-        temp_state = 'b11100101;
+        //a = y[initialize_i];
+        if(clk_counter_scy == 2'b10)
+        begin
+            a = y;
+            clk_counter_scy =  2'b00;
+            b = offset_y;
+            state = 7'b1000101; //Subtractor
+            temp_state = 'b11100101;                    
+        end
+        else
+        begin
+            sub_cood_addr_y = base_address+ initialize_i;
+            clk_counter_scy = clk_counter_scy + 1;
+            state = 'b11100100;
+        end
      end
      'b11100101: //'b10000000:
      begin
@@ -2913,11 +3023,6 @@ begin
         debug_in_b11100110 = 1'b1;
         state = initialize_temp_state;
      end
-	 
-	 
-	 
-	 
-	///////////////////////////////////// residuals ///////////////////////////////////// **************
      'b11100111: //'b10000010: //residuals
      begin
         //dx = Subtractor_Float(x, cx); 
@@ -3161,11 +3266,6 @@ begin
         residuals[383:352] = residuals_Gy;
         state = residuals_temp_state;
      end
-	 
-	 
-	 
-	 
-	///////////////////////////////////// interpolate_bilinear /////////////////////////////////////
      'b100000001: //'b100011100: //interpolate_bilinear
      begin
         if(ib_local_x[31] == 1'b1 || ib_local_y[31] == 1'b1)//local_x>=width_-1.5 local_y>=height_-1.5
@@ -3480,10 +3580,6 @@ begin
      begin
         state = interpolate_bilinear_temp_state;
      end
-	 
-	 
-	
-	///////////////////////////////////// interpolate_grad_x_bilinear /////////////////////////////////////
      'b100100100: //'b100111111: //interpolate_grad_x_bilinear 
      begin
         if(igxb_local_x[31] == 1'b1 || igxb_local_y[31] == 1'b1)//local_x>=width_-1.5 local_y>=height_-1.5
@@ -3833,11 +3929,6 @@ begin
      begin
         state = interpolate_grad_x_bilinear_temp_state;
      end
-	 
-	 
-	 
-	 
-	///////////////////////////////////// interpolate_grad_y_bilinear /////////////////////////////////////
      'b101000110: //'b101100000: //interpolate_grad_y_bilinear
      begin
         if(igyb_local_x[31] == 1'b1 || igyb_local_y[31] == 1'b1)//local_x>=width_-1.5 local_y>=height_-1.5
@@ -4031,7 +4122,7 @@ begin
         state = 7'b1000000; //Adder
         temp_state = 'b101011000;
      end
-     'b101011000: //'b101110010:
+     'b101011000:
      begin
         igyb_t1 = Adder_Float;
         //t1 = Float_to_Int(t1);
@@ -4197,9 +4288,6 @@ begin
      begin
         state = interpolate_grad_y_bilinear_temp_state;
      end
-	 
-	 
-	///////////////////////////////////// Float_to_Int ///////////////////////////////////// **************
      'b101101001: //'b110000010: //Float_to_Int
      begin
         fti_a = fti_input_a;
@@ -4258,92 +4346,87 @@ begin
         Float_to_Int = fti_s_output_z;
         state = Float_to_Int_temp_state;
      end
-	 
-	 
-	 
-	 
     endcase
     
 end //always
  
-	///////////////////////////////////// subset_global_id_function ///////////////////////////////////// **************
-	function [31:0] subset_global_id_function;
-		input [31:0] ind;
-		begin
-			subset_global_id_function = subset_global_id[ind];
-		end
-	endfunction
-
-
-
-	///////////////////////////////////// closest_triad /////////////////////////////////////
-	function [31:0] closest_triad;
-		input [31:0] u, v, t;
-		input [31:0] id, distance_sqr;
-		reg [31:0] query_pt [0:2];
-		begin
-			query_pt[0] = u;
-			query_pt[1] = v;
-			query_pt[2] = t;
-			closest_triad = query_pt[0];
-			//knsearch ???
-		end
-	endfunction
-
-
-	///////////////////////////////////// neighbor /////////////////////////////////////
-	function [31:0] neighbor;
-		input [31:0] triad_id;
-		input [31:0] neighbor_index;
-		reg [31:0] index;
-		begin
-			index = triad_id * num_neighbors_;
-			index = index + neighbor_index;
-			neighbor = neighbors_[index]; //**** define neighbors array
-		end
-	endfunction
-
-
-	///////////////////////////////////// less_than ///////////////////////////////////// **************
-	function less_than;
-		input [31:0] a;
-		input [31:0] b;
-		begin
-			if(a[31] == 1'b1 && b[31] == 1'b0)
-			begin
-				less_than = 1'b1;
-			end
-			else if(a[31] == 1'b0 && b[31] == 1'b1)
-			begin
-				less_than = 1'b0;
-			end
-			else
-			begin
-				if(a[30:0] < b[30:0])
-				begin
-					less_than = 1'b1;
-				end
-				else
-				begin
-					less_than = 1'b0;
-				end
-			end
-		end
-	endfunction 
-
-
-	///////////////////////////////////// bit2bit_sq ///////////////////////////////////// **************
-	function [51:0] bit2bit_sq;
-	  input [25:0] d;
-	  integer j;
-	  begin
-		   for (j = 25; j >= 0; j = j -1)
-		   begin
-				// x'right must be zero
-				bit2bit_sq[2*j]= d[j];
-				bit2bit_sq[2*j+1] = 1'b0;
-			end
-	  end
+/////////////////////////////////////////////////// FUNCTIONS ///////////////////////////////////////////////////
+function [31:0] subset_global_id_function;
+    input [31:0] ind;
+    begin
+        subset_global_id_function = subset_global_id[ind];
+    end
 endfunction
+
+///////////////////////////// Start of Closet_Triad() /////////////////////////////
+function [31:0] closest_triad;
+    input [31:0] u, v, t;
+    input [31:0] id, distance_sqr;
+    reg [31:0] query_pt [0:2];
+    begin
+        query_pt[0] = u;
+        query_pt[1] = v;
+        query_pt[2] = t;
+        closest_triad = query_pt[0];
+        //knsearch ???
+    end
+endfunction
+///////////////////////////// End of Closet_Triad() /////////////////////////////
+
+///////////////////////////// Start of Neighbor() /////////////////////////////
+function [31:0] neighbor;
+    input [31:0] triad_id;
+    input [31:0] neighbor_index;
+    reg [31:0] index;
+    begin
+        index = triad_id * num_neighbors_;
+        index = index + neighbor_index;
+        neighbor = neighbors_[index]; //**** define neighbors array
+    end
+endfunction
+///////////////////////////// End of Neighbor() /////////////////////////////
+
+///////////////////////////// Start of Less_than() /////////////////////////////
+function less_than;
+    input [31:0] a;
+    input [31:0] b;
+    begin
+        if(a[31] == 1'b1 && b[31] == 1'b0)
+        begin
+            less_than = 1'b1;
+        end
+        else if(a[31] == 1'b0 && b[31] == 1'b1)
+        begin
+            less_than = 1'b0;
+        end
+        else
+        begin
+            if(a[30:0] < b[30:0])
+            begin
+                less_than = 1'b1;
+            end
+            else
+            begin
+                less_than = 1'b0;
+            end
+        end
+    end
+endfunction 
+///////////////////////////// End of Less_than() /////////////////////////////
+
+////////////////////////////// bit2bit_sq //////////////////////////////////////
+function [51:0] bit2bit_sq;
+  input [25:0] d;
+  integer j;
+  begin
+       for (j = 25; j >= 0; j = j -1)
+       begin
+            // x'right must be zero
+            bit2bit_sq[2*j]= d[j];
+            bit2bit_sq[2*j+1] = 1'b0;
+        end
+  end
+endfunction
+////////////////////////////// End bit2bit_sq //////////////////////////////////////
 
 endmodule
