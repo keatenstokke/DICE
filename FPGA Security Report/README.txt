@@ -1,0 +1,1 @@
+This folder contains the FPGA security report that was assigned under the Honeywell contract. In the corresponding folders the report can be found in .pdf and .docx format, and the references citied in .pdf format.
