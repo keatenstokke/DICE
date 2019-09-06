@@ -104,7 +104,7 @@ module Coords_Intr(
         'b001101:
         begin
             half_subset_size = param_dout;
-            param_addr = ((((coord_subset_number + 1) * 5) + 2) * 4); //to read shape
+            param_addr = ((((coord_subset_number + 1) * 5) + 2) * 4); //to read subset shape
             state = 'b001110; 
         end
         'b001110:
