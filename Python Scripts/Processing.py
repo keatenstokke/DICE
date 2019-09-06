@@ -507,8 +507,11 @@ if __name__ == '__main__':
 		fraction_str = Input_str[9:32]
 
 		sign = int(sign_str, 2)
-		exp = int(exp_str, 2) - 127
-
+		#exp = int(exp_str, 2) - 127
+		exp = int(exp_str, 2)
+		if(exp_str[0] == '1'):
+			exp -= 2**len(exp_str)
+		exp = exp - 127
 		for i in range(0, 23):
 			pow = pow - 1;
 			fraction = fraction + int(fraction_str[i], 2) * (2 ** pow)
