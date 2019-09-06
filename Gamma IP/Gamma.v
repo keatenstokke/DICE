@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module Gamma_Multi_Subs_Multi_Shapes_232_448(
+module Gamma_Multi_Upd_Aff_Subs_Multi_Shapes_232_448(
     input clock,
     input ready_Params,
     input ready_Grad,
@@ -43,16 +43,22 @@ module Gamma_Multi_Subs_Multi_Shapes_232_448(
     output reg [127:0] gam_idle_counter = 128'b0,
     output reg gam_busy = 1'b0
 );
- 
-parameter N = 14; //# of subsets
+
+parameter Num_Subs = 14; //# of subsets
+parameter N = 5; //Upd
 reg [1:0] clk_counter_a = 2'b0;
 reg [1:0] clk_counter_b = 2'b0;
 reg [1:0] clk_counter_scx = 2'b0;
 reg [1:0] clk_counter_scy = 2'b0;
-reg [95:0] residuals_out;    
-reg [31:0] SUBSET_DISPLACEMENT_X_FS [0:N];
-reg [31:0] SUBSET_DISPLACEMENT_Y_FS [0:N];
-reg [31:0] ROTATION_Z_FS [0:N];
+//reg [95:0] residuals_out;  
+reg [191:0] residuals_out;   //aff
+// global field values
+reg [31:0] SUBSET_DISPLACEMENT_X_FS [0:Num_Subs]; //Upd
+reg [31:0] SUBSET_DISPLACEMENT_Y_FS [0:Num_Subs]; //Upd
+reg [31:0] ROTATION_Z_FS [0:Num_Subs]; //Upd
+reg [31:0] NORMAL_STRETCH_XX_FS [0:Num_Subs]; //Upd
+reg [31:0] NORMAL_STRETCH_YY_FS [0:Num_Subs]; //Upd
+reg [31:0] SHEAR_STRETCH_XY_FS [0:Num_Subs]; //Upd
 reg [31:0] subset_gid;
 //reg [31:0] gid = 32'b0; //global id of each subset
 reg [31:0] prev_u, prev_v, prev_t;
@@ -66,21 +72,25 @@ reg [31:0] mfdd, dfdd, norm_Hi, mfhq;
 reg [31:0] q [0:N];
 reg [31:0] H [0:N][0:N];
 reg [31:0] def_update [0:N];
+reg [31:0] parameters_ [0:N];
+reg [31:0] def_old [0:N]; //Upd
 reg [31:0] old_t, old_v, old_u;
 reg [31:0] def_imgs_ [0:N];
 reg [31:0] prev_imgs_ [0:N];
 reg [31:0] accumulated_disp = 32'b0;
-reg [8:0] state = 'b0;
-reg [8:0] temp_state, initial_guess_temp_state, initialize_temp_state, mean_temp_state, residuals_temp_state;
-reg [8:0] map_to_u_v_theta_temp_state, insert_motion_temp_state, map_temp_state, initial_guess_4_temp_state;
-reg [8:0] interpolate_bilinear_temp_state, interpolate_grad_x_bilinear_temp_state, interpolate_grad_y_bilinear_temp_state;
-reg [8:0] sin_temp_state, cos_temp_state, asin_temp_state, acos_temp_state;
-reg [8:0] Float_to_Int_temp_state;
+reg [9:0] state = 'b0;
+reg [9:0] temp_state, initial_guess_temp_state, initialize_temp_state, mean_temp_state, residuals_temp_state;
+reg [9:0] map_to_u_v_theta_temp_state, insert_motion_temp_state, map_temp_state, initial_guess_4_temp_state;
+reg [9:0] interpolate_bilinear_temp_state, interpolate_grad_x_bilinear_temp_state, interpolate_grad_y_bilinear_temp_state;
+reg [9:0] sin_temp_state, cos_temp_state, asin_temp_state, acos_temp_state;
+reg [9:0] Float_to_Int_temp_state, test_for_convergence_temp_state, update_temp_state;
+reg [9:0] map_aff_temp_state, muvt_aff_temp_state, residuals_aff_temp_state, insert_motion_aff_temp_state, test_for_convergence_aff_temp_state;
+reg [9:0] save_fields_temp_state;
 // The current version does not support this feature (pixel deactivation)
 //reg [8:0] subset_is_active = 9'b111111111; //# subset pixels
 reg [1:0] interp = 2'b00;
 reg use_incremental_formulation_ = 1'b1;
-reg converged = 1'b1; //????????????????????
+reg converged = 1'b1;
 reg MAX_ITERATIONS_REACHED;
 reg Correlation_Done;
 reg output_deformed_subset_images_;
@@ -89,7 +99,7 @@ reg DICE_ENABLE_GLOBAL = 1'b0;
 reg obj_vec_empty;
 reg target = 1'b0;
 reg corr_status;
-reg [31:0] subset_global_id [0:N]; //N = # subsets
+reg [31:0] subset_global_id [0:Num_Subs]; //Num_Subs = # subsets //Upd
 reg initial_guess_4_out;
 reg insert_motion_out;
 reg closest_triad_out;
@@ -99,8 +109,7 @@ reg [31:0] QUAD_I_FS, QUAD_J_FS, QUAD_K_FS;
 // The current version does not support this feature (pixel deactivation)
 //reg [8:0] is_active_ = 9'b111111111; //# subset pixels
 reg [31:0] neighbors_ [0:1];
-reg [31:0] subset_size = 32'b01000000010000000000000000000000;
-reg [31:0] intensities_ [0:8];
+reg [31:0] intensities_ [0:3449]; //assuminh max suset_size is 3450
 reg [31:0] offset_x = 32'b0;
 reg [31:0] offset_y = 32'b0;
 reg [31:0] width = 32'b01000011111000000000000000000000; //448
@@ -110,17 +119,19 @@ reg has_gradients_ = 1'b1;
 reg [31:0] grad_x [0:103935];
 reg [31:0] grad_y [0:103935];
 reg [31:0] guess_t, guess_v, guess_u;
-
+reg [31:0] temp_H_i, temp_q_i;
 //integer num_pixels_ = 9; //for subset
 integer state_counter = 0;
 integer subset_index = 0;
 integer num_iterations;
-integer max_solve_its = 25; // for fast method
+integer max_solve_its = 25;
 integer solve_it = 0;
 integer index = 0;
 integer i = 0;
 integer j = 0;
 integer k = 0;
+integer l = 0;
+integer p = 0;
 integer prev_imgs_size = 2;
 integer num_neighbors_ = 1;
 integer counter_int = 0;
@@ -161,11 +172,12 @@ integer factor = 32;
     reg [52:0] rt;
     reg [31:0] t1, t2, t3;
     reg cos_done, arith_done, sin_done, acos_done, asin_done;
-    reg [31:0] debug_1, debug_2, debug_3, debug_4, debug_5;
     integer i_for;
     //for insert_motion
     reg [31:0] im_u, im_v, im_theta;
     reg insert_motion;
+	// for insert_motion_aff
+	reg [31:0] imaff_u, imaff_v, imaff_theta;
     //for gamma
     reg [31:0] temp_gamma, value, gamma_t1, gamma_t2, gamma_;
     reg [9:0] gamma_temp_state;
@@ -176,9 +188,18 @@ integer factor = 32;
     reg [31:0] muvt_cxp, muvt_cyp, muvt_cxy, muvt_cx_5, muvt_ax, muvt_ay, muvt_ax_s, muvt_ay_s;
     reg [31:0] muvt_mag_a, muvt_bx, muvt_by, muvt_mag_b, muvt_a_dot_b_over_mags, muvt_rxp, muvt_ryp;
     reg [95:0] map_to_u_v_theta;
+	// for map_to_u_v_theta_aff
+	reg [31:0] muvt_aff_cx, muvt_aff_cy;
+	reg [95:0] map_to_u_v_theta_aff;
     //for map
     reg [31:0] map_x, map_y, map_cx, map_cy, map_dx, map_dy, map_t1, map_t2;
     reg [63:0] map;
+	//for map Affine
+	reg [31:0] map_aff_x, map_aff_y, map_aff_cx, map_aff_cy, map_aff_out_x, map_aff_out_y;
+	reg [31:0] map_aff_dx, map_aff_dy, map_aff_Dx, map_aff_Dy;
+	reg [31:0] map_aff_cost, map_aff_sint;
+	reg [31:0] map_aff_t1, map_aff_t2, map_aff_t3;
+	reg [63:0] map_aff;
     //for mean
     reg mean_ref_def;
     reg [31:0] mean_temp_sum, mean_subset_size_in_ieee;
@@ -205,18 +226,26 @@ integer factor = 32;
     reg residuals_use_ref_grads;
     reg [31:0] residuals_dx, residuals_dy, residuals_Gx, residuals_Gy;
     reg [31:0] residuals_u, residuals_v, residuals_theta, residuals_cosTheta, residuals_sinTheta, residuals_t1, residuals_t2, residuals_t3;
-    reg [383:0] residuals;
+    reg [383:0] residuals;	
+	// for residuals_aff
+	reg [31:0] residuals_aff_x, residuals_aff_y, residuals_aff_cx, residuals_aff_cy, residuals_aff_gx, residuals_aff_gy;
+	reg residuals_aff_use_ref_grads;
+	reg [31:0] residuals_aff_dx, residuals_aff_dy, residuals_aff_Dx, residuals_aff_Dy;
+	reg [31:0] residuals_aff_delTheta, residuals_aff_delEx, residuals_aff_delEy, residuals_aff_delGxy, residuals_aff_Gx, residuals_aff_Gy;
+	reg [31:0] residuals_aff_theta, residuals_aff_dudx, residuals_aff_dvdy, residuals_aff_gxy, residuals_aff_cosTheta, residuals_aff_sinTheta;
+	reg [31:0] residulas_t1, residulas_t2, residulas_t3, residulas_t4, residulas_t5, residulas_t6;
+	reg [191:0] residuals_aff; 
     //for interpolate_bilinear
     reg [31:0] ib_local_x, ib_local_y;
-    reg [31:0] ib_width_ = 32'b01000000010000000000000000000000; //3
-    reg [31:0] ib_height_ = 32'b01000000010000000000000000000000; //3
+    reg [31:0] ib_width_ = 32'b01000011111000000000000000000000; //Ver
+    reg [31:0] ib_height_ = 32'b01000011011010000000000000000000; //Ver
     reg [31:0] ib_x1, ib_x2, ib_y1, ib_y2;
     reg [31:0] ib_t1, ib_t2, ib_t3, ib_t4, ib_t5, ib_t6;
     reg [31:0] interpolate_bilinear;
     //for interpolate_grad_x_bilinear;
     reg [31:0] igxb_local_x, igxb_local_y;
-    reg [31:0] igxb_width_in = 32'b0;
-    reg [31:0] igxb_height_in = 32'b0;
+    reg [31:0] igxb_width_in = 32'b01000011111000000000000000000000; //Ver
+    reg [31:0] igxb_height_in = 32'b01000011011010000000000000000000; //Ver
     reg [31:0] igxb_x1, igxb_x2, igxb_y1, igxb_y2;
     reg [31:0] igxb_t1, igxb_t2, igxb_t3, igxb_t4, igxb_t5, igxb_t6;
     reg [31:0] interpolate_grad_x_bilinear;
@@ -234,27 +263,9 @@ integer factor = 32;
     reg [31:0] fti_s_output_z;
     reg [31:0] Float_to_Int;
     integer fti_i;
-    //for debug
-    reg debug_in_b1011010, debug_in_b1011011, debug_in_b1011100, debug_in_b10001100;
-    integer debug_state_counter = 0;
-    reg debug_in_b1111101,debug_in_b1111110,debug_in_b1111111, debug_in_b10000011;
-    reg debug_in_b10000010, debug_in_b10000001, debug_in_b10000000,debug_in_b10000101;
-    reg debug_in_b10000110, debug_in_b10000111, debug_in_b10000100;
-    reg debug_in_b1111100, debug_in_b11001100, debug_in_b10001011, debug_in_b11001101;
-    reg debug_in_b11100011, debug_in_b11100010, debug_in_b11010101_else;
-    reg debug_in_b000001010_if_else, debug_in_b000001010_else, debug_in_b000011001;
-    reg debug_in_b000001010, debug_in_b000001001, debug_in_b11100110;
-    reg debug_in_b000010110_else, debug_in_b000011000;
-    reg debug_in_b000010111, debug_in_b000010110, debug_in_b000010101;
-    reg debug_in_b000010100, debug_in_b000010011, debug_in_b000010010;
-    reg debug_in_b000010001, debug_in_b000010000, debug_in_b000010000_if, debug_in_b000010000_else;
-    reg debug_in_b11101010, debug_in_b11101001, debug_in_b10001110, debug_in_b10001111;
-    reg debug_in_b10010000, debug_in_b10010001, debug_in_b10010010, debug_in_b10011000, debug_in_b10100010;
-    reg debug_in_b10011101, debug_in_b10011110, debug_In_b10011111, debug_in_b10100001, debug_in_b10100000;
-    reg debug_in_b000011010, debug_in_b000011011, debug_in_b000011110, debug_in_b000011111;
-    reg debug_in_b000100111, debug_in_b000101001, debug_in_b000101010;
-    reg [31:0] debug_a_in_b000010110, debug_b_in_b000010110, debug_i_in_b000010110, debug_mfrr_in_b000010111;
-    reg [31:0] debug_i_in_b000010011,debug_i_in_b000010011_if, debug_i_in_b000010011_else, debug_i_in_b000010110_if;
+	//for test_for_convergence
+	reg [31:0] fast_solver_tolerance = 32'b00111000110100011011011100010111; //10^-4 //Upd
+	// for test_for_convergence_aff  
     //for multiple subsets
     reg [31:0] subset_range_selection;
     
@@ -299,10 +310,54 @@ begin
                 begin
                     SUBSET_DISPLACEMENT_X_FS[gid] = 32'b0;
                     SUBSET_DISPLACEMENT_Y_FS[gid] = 32'b0; 
-                    ROTATION_Z_FS[gid] = 32'b0;  
+                    ROTATION_Z_FS[gid] = 32'b0;
+                    NORMAL_STRETCH_XX_FS [gid] = 32'b0;
+                    NORMAL_STRETCH_YY_FS [gid] = 32'b0;
+                    SHEAR_STRETCH_XY_FS [gid] = 32'b0;
+                    parameters_[0] = 32'b0;
+                    parameters_[1] = 32'b0;
+                    parameters_[2] = 32'b0;
+                    parameters_[3] = 32'b0;
+                    parameters_[4] = 32'b0;
+                    parameters_[5] = 32'b0;
+                    H[0][0] = 32'b0;
+                    H[0][1] = 32'b0;
+                    H[0][2] = 32'b0;
+                    H[0][3] = 32'b0;
+                    H[0][4] = 32'b0;
+                    H[0][5] = 32'b0;                   
+                    H[1][0] = 32'b0;
+                    H[1][1] = 32'b0;
+                    H[1][2] = 32'b0;
+                    H[1][3] = 32'b0;
+                    H[1][4] = 32'b0;
+                    H[1][5] = 32'b0;                   
+                    H[2][0] = 32'b0;
+                    H[2][1] = 32'b0;
+                    H[2][2] = 32'b0;
+                    H[2][3] = 32'b0;
+                    H[2][4] = 32'b0;
+                    H[2][5] = 32'b0;                   
+                    H[3][0] = 32'b0;
+                    H[3][1] = 32'b0;
+                    H[3][2] = 32'b0;
+                    H[3][3] = 32'b0;
+                    H[3][4] = 32'b0;
+                    H[3][5] = 32'b0;                 
+                    H[4][0] = 32'b0;
+                    H[4][1] = 32'b0;
+                    H[4][2] = 32'b0;
+                    H[4][3] = 32'b0;
+                    H[4][4] = 32'b0;
+                    H[4][5] = 32'b0;                 
+                    H[5][0] = 32'b0;
+                    H[5][1] = 32'b0;
+                    H[5][2] = 32'b0;
+                    H[5][3] = 32'b0;
+                    H[5][4] = 32'b0;
+                    H[5][5] = 32'b0;
                 end
                 state = 9'b000000001;
-                debug_state_counter = debug_state_counter + 1;
             end
         end
         else
@@ -313,14 +368,13 @@ begin
     end
     9'b000000001:
     begin
-        debug_state_counter = debug_state_counter + 1;  
         if(DICE_ENABLE_GLOBAL == 1'b1)
         begin
             state = 9'b000101111;
         end
         if(correlation_routine_ == 32'b0) //TRACKING_ROUTINE
         begin
-            if(N == 0) //# subsets
+            if(Num_Subs == 0) //# subsets
             begin
                 obj_vec_empty = 1'b1;
             end
@@ -350,7 +404,6 @@ begin
     end
     'b000000010:
     begin
-        debug_state_counter = debug_state_counter + 1;  
         if(subset_index < num_of_subsets)
         begin
             //subset_gid = subset_global_id(subset_index);
@@ -367,7 +420,6 @@ begin
     end
     'b000000011:
     begin
-        debug_state_counter = debug_state_counter + 1;  
         //prepare_optimization_initializers() **** NOT DONE does pathfile
         // execute the subsets in order
         subset_index = 0;
@@ -375,7 +427,6 @@ begin
     end
     9'b000000100:
     begin
-        debug_state_counter = debug_state_counter + 1;  
         if(subset_index < num_of_subsets)
         begin
             //check_for_blocking_subsets(subset_gid);
@@ -389,10 +440,9 @@ begin
     end
     'b000000101:
     begin
-        debug_state_counter = debug_state_counter + 1;  
         corr_status = 1'b0; //CORRELATION_FAILED;
         num_iterations =  -1;
-        //init_status = initial_guess(gid); //subset_gid **** FOR DEBUG
+        //init_status = initial_guess(gid); //subset_gid
         ig_gid = gid;
         state = 9'b11001000; //initial_guess
         initial_guess_temp_state = 9'b000000110;
@@ -414,6 +464,7 @@ begin
         begin
             //computeUpdateFast()
             gam_done = 1'b0; 
+            solve_it = 0;
             state = 'b000000111; //11 
         end
     end
@@ -426,7 +477,7 @@ begin
         end
         else
         begin
-           state = 'b000101110; //24
+            state = 'b000101111;
         end
     end
     'b000001000:
@@ -439,7 +490,6 @@ begin
     end
     'b000001001:
     begin
-        debug_in_b000001001 = 1'b1;   
         initialize_out = initialize;
         GmF = 32'b0;
         index = 0;
@@ -448,37 +498,10 @@ begin
     end
     'b000001010:
     begin
-        debug_in_b000001010 = 1'b1;
-        if(index < num_pixels)
-        begin
-            state_counter = state_counter + 1;
-            // The current version does not support this feature (pixel deactivation)
-            /*if(subset_is_active[index] == 1'b1)
-            begin
-                //{meanG, sumG} = mean(1'b1);
-                mean_ref_def = 1'b1;
-                state = 'b11000010; //mean
-                mean_temp_state = 'b000001011;
-            end
-            else
-            begin
-                debug_in_b000001010_if_else = 1'b1;
-                state_counter = state_counter + 1; 
-                index = index + 1;
-                state = 'b000001010;
-            end*/
-            
-            //{meanG, sumG} = mean(1'b1);
-            mean_ref_def = 1'b1;
-            state = 'b11000010; //mean
-            mean_temp_state = 'b000001011;
-        end
-        else
-        begin
-            debug_in_b000001010_else = 1'b1;
-            state_counter = state_counter + 1;
-            state = 'b000011010;
-        end
+        //{meanG, sumG} = mean(1'b1);
+        mean_ref_def = 1'b1;
+        state = 'b11000010; //mean
+        mean_temp_state = 'b000001011;
     end
     'b000001011:
     begin
@@ -493,20 +516,32 @@ begin
     begin
         sumF = mean[31:0];
         meanF = mean[63:32];
-        //sfG = Subtractor_Float(def_intensities_[index*32 + 31 -:32], meanG); //indexing changed
-        if(clk_counter_b == 2'b10)
+        state = 'b1110100101;
+    end
+    'b1110100101:
+    begin
+        if(index < num_pxl_Int) //num_pixels
         begin
-            a = dout_def_ints;
-            clk_counter_b =  2'b00;
-            b = meanG;
-            state = 7'b1000101; //Subtractor
-            temp_state = 'b000001101;                 
+            //sfG = Subtractor_Float(def_intensities_[index*32 + 31 -:32], meanG); //indexing changed
+            if(clk_counter_b == 2'b10)
+            begin
+                a = dout_def_ints;
+                clk_counter_b =  2'b00;
+                b = meanG;
+                state = 7'b1000101; //Subtractor
+                temp_state = 'b000001101;                 
+            end
+            else
+            begin
+                addr_def_ints = index;
+                clk_counter_b = clk_counter_b + 1;
+                state = 'b1110100101; //'b000001100;
+            end
         end
         else
         begin
-            addr_def_ints = index;
-            clk_counter_b = clk_counter_b + 1;
-            state = 'b000001100;
+            state_counter = state_counter + 1;
+            state = 'b000011010;
         end
     end
     'b000001101:
@@ -546,20 +581,19 @@ begin
     end
     'b000010000:
     begin
-        debug_in_b000010000 = 1'b1;
-        if(i < N)
+        if(i <= N)
         begin
-            debug_in_b000010000_if = 1'b1;
            //residuals[i] = 0.0;
            state_counter = state_counter + 1; 
-           residuals_out[i*32+31-:32] = 32'b0;
-           q[i] = 32'b0;
+           //residuals_out[i*32+31-:32] = 32'b0;
+		   //aff
+		   residuals_out[i*32+31-:32] = 32'b0;
+           //q[i] = 32'b0; in the C code this is done at the end of each iteration
            i = i + 1;
            state = 'b000010000;
         end
         else
         begin
-            debug_in_b000010000_else = 1'b1;
             state_counter = state_counter + 1; 
             state = 'b101110000; //15
         end
@@ -572,7 +606,9 @@ begin
         //residuals_y = y[index*32 + 31-:32];
         if(clk_counter_scx == 2'b10)
         begin
-            residuals_x = x;
+            //residuals_x = x;
+			//aff
+			residuals_aff_x = x;
             clk_counter_scx =  2'b00;
             clk_counter_scy = 2'b01;
             state = 'b101110000;                       
@@ -585,7 +621,9 @@ begin
         end
         else if(clk_counter_scy == 2'b11)
         begin
-            residuals_y = y;
+            //residuals_y = y;
+			//aff
+			residuals_aff_y = y;
             clk_counter_scy =  2'b00;
             //go to the next state
             state = 'b000010001;                 
@@ -599,11 +637,12 @@ begin
      end   
     'b000010001:
     begin
-        debug_in_b000010001 = 1'b1;
         state_counter = state_counter + 1;
         if(clk_counter_a == 2'b10)
         begin
-            residuals_gx = dout_grad_x_;
+            //residuals_gx = dout_grad_x_;
+			//aff
+			residuals_aff_gx = dout_grad_x_;
             clk_counter_a =  2'b00;
             clk_counter_b = 2'b01;
             state = 'b000010001;                       
@@ -616,13 +655,21 @@ begin
         end
         else if(clk_counter_b == 2'b11)
         begin
-            residuals_gy = dout_grad_y_;
+            //residuals_gy = dout_grad_y_;
+			//aff
+			residuals_aff_gy = dout_grad_y_;
             clk_counter_b =  2'b00;
-            residuals_cx = cx_;
-            residuals_cy = cy_;
-            residuals_use_ref_grads = 1'b1; 
-            state = 'b11100111; //residuals;
-            residuals_temp_state = 'b000010010;                     
+            //residuals_cx = cx_;
+            //residuals_cy = cy_;
+			//residuals_use_ref_grads = 1'b1; 
+            //state = 'b11100111; //residuals;
+            //residuals_temp_state = 'b000010010; 
+			//aff
+			residuals_aff_cx = cx_;
+			residuals_aff_cy = cy_;
+            residuals_aff_use_ref_grads = 1'b1;
+			state = 'b1110010000; //residuals_aff
+			residuals_aff_temp_state = 'b000010010;
         end
         else
         begin
@@ -633,16 +680,15 @@ begin
     end
     'b000010010:
     begin
-        debug_in_b000010010 = 1'b1;
-        residuals_out = residuals;
+        //residuals_out = residuals;
+		//aff
+		residuals_out = residuals_aff;
         i = 32'b0;
         state = 'b000010011;
     end
     'b000010011:
     begin
-        debug_in_b000010011 = 1'b1;
-        debug_i_in_b000010011 = i;
-        if(i < N)
+        if(i <= N)
         begin
             state_counter = state_counter + 1; 
             //q[i] += GmF*residuals[i];
@@ -651,18 +697,15 @@ begin
             b = residuals_out[i*32+31-:32];
             state = 7'b1000110; //Multiplier
             temp_state = 'b000010100;
-            debug_i_in_b000010011_if = i; 
         end
         else
         begin
             state_counter = state_counter + 1;
-            debug_i_in_b000010011_else = i; 
             state = 'b000011001;
         end
     end
     'b000010100:
     begin
-        debug_in_b000010100 = 1'b1;
         mfgr = Multiplier_Float;
         j = 0;
         //q[i] = Adder_Float(q[i], mfgr);
@@ -673,30 +716,24 @@ begin
     end
     'b000010101:
     begin
-        debug_in_b000010101 = 1'b1;
-        q[i] = Adder_Float;
+        temp_q_i = Adder_Float;       
         state = 'b000010110;
     end
     'b000010110:
     begin
-        debug_in_b000010110 = 1'b1;
-        debug_i_in_b000010110 = i;
-        if(j < N)
+        q[i] = temp_q_i;
+        if(j <= N)
         begin
             state_counter = state_counter + 1; 
             //mfrr = Multiplier_Float(residuals_out[i*32+31-:32], residuals_out[i*32+31-:32]);
             a = residuals_out[i*32+31-:32];
             b = residuals_out[i*32+31-:32];
-            debug_a_in_b000010110 = a;
-            debug_b_in_b000010110 = b;
-            debug_i_in_b000010110_if = i;
-            H[i][j] = 32'b0;
+            //H[i][j] = 32'b0;
             state = 7'b1000110; //Multiplier
             temp_state = 'b000010111;
         end
         else
         begin
-            debug_in_b000010110_else = 1'b1;
             state_counter = state_counter + 1; 
             i = i + 1;
             state = 'b000010011; 
@@ -704,9 +741,7 @@ begin
     end
     'b000010111:
     begin
-        debug_in_b000010111 = 1'b1;
         mfrr = Multiplier_Float;
-        debug_mfrr_in_b000010111 = mfrr;
         //H[i][j] = Adder_Float(H[i][j] , mfrr);
         a = H[i][j];
         b = mfrr;
@@ -715,21 +750,19 @@ begin
     end
     'b000011000:
     begin
-        debug_in_b000011000 = 1'b1;
-        H[i][j] = Adder_Float;
+        temp_H_i = Adder_Float;
+        H[i][j] = temp_H_i;
         j = j + 1;
         state = 'b000010110;
     end
     'b000011001:
     begin
-        debug_in_b000011001 = 1'b1;
-        state_counter = state_counter + 1; 
+        state_counter = state_counter + 1;      
         index = index + 1;
-        state = 'b000001010;
+        state = 'b1110100101;
     end
     'b000011010:
     begin
-        debug_in_b000011010 = 1'b1;
         state_counter = state_counter + 1;
         //mfhh10 = Multiplier_Float(H[1][0], H[0][1]);
         a = H[1][0];
@@ -739,7 +772,6 @@ begin
     end
     'b000011011:
     begin
-        debug_in_b000011011 = 1'b1;
         mfhh10 = Multiplier_Float;
         //mfhh01 = Multiplier_Float(H[0][0], H[1][1]);
         a = H[0][0];
@@ -767,7 +799,6 @@ begin
     end
     'b000011110:
     begin
-        debug_in_b000011110 = 1'b1;
         mfhh10_mfhh01 = Adder_Float;
         //norm_H = SQRT(mfhh10_mfhh01);
         a = mfhh10_mfhh01;
@@ -776,7 +807,6 @@ begin
     end
     'b000011111:
     begin
-        debug_in_b000011111 = 1'b1;
         norm_H = SQRT;
         cond_2x2 = 32'b10111111100000000000000000000000; //-1
         if(det_h != 0)
@@ -839,11 +869,12 @@ begin
     end
     'b000100111:
     begin
-        debug_in_b000100111 = 1'b1;
         state_counter = state_counter + 1; 
-        if(i < N)
+        if(i <= N)
         begin
+            // save off last step
             //def_old[i] = (*shape_function)(i); ****
+			def_old[i] = residuals_out[i*32+31-:32]; //Upd
             i = i + 1; 
             state = 'b000100111;
         end
@@ -856,10 +887,9 @@ begin
     'b000101000:
     begin
         state_counter = state_counter + 1; 
-        if(i < N)
+        if(i <= N)
         begin
-            //def_old[i] = (*shape_function)(i);
-            //def_update[i] = 0.0;
+            def_update[i] = 32'b0; //Upd
             i = i + 1;
             state = 'b000101000;
         end
@@ -872,11 +902,10 @@ begin
     end
     'b000101001:
     begin
-        debug_in_b000101001 = 1'b1;
         state_counter = state_counter + 1; 
-        if(i < N)
+        if(i <= N)
         begin
-            if(j < N)
+            if(j <= N)
             begin
                 //mfhq = Multiplier_Float(H[i][j], q[j]);
                 a = H[i][j];
@@ -893,12 +922,11 @@ begin
         end
         else
         begin
-            state = 'b000101100;
+            state = 'b101111010;
         end
     end
     'b000101010:
     begin
-        debug_in_b000101010 = 1'b1;
         mfhq = Multiplier_Float;
         mfhq = {!mfhq[31], mfhq[30:0]};
         //def_update[i] = Adder_Float(def_update[i],mfhq);
@@ -913,6 +941,12 @@ begin
         j = j + 1;
         state = 'b000101001;
     end
+	'b101111010: //Upd
+	begin
+		//shape_function->update(def_update);
+		state = 'b101110101; //Update
+		update_temp_state = 'b000101100;
+	end
     'b000101100:
     begin
         state_counter = state_counter + 1; 
@@ -921,44 +955,89 @@ begin
         guess_t = 32'b0;
         //{guess_t, guess_v, guess_u} = map_to_u_v_theta(cx_, cy_);
         //shape_function->map_to_u_v_theta(cx,cy,old_u,old_v,old_t); ??
-        muvt_cx = cx_;
-        muvt_cy = cy_;
-        state = 'b10001101; //map_to_u_v_theta
-        map_to_u_v_theta_temp_state = 'b000101101;
+        //muvt_cx = cx_;
+        //muvt_cy = cy_;
+        //state = 'b10001101; //map_to_u_v_theta
+        //map_to_u_v_theta_temp_state = 'b000101101;
+		//aff
+		muvt_aff_cx = cx_;
+		muvt_aff_cy = cy_;
+		state = 'b110010111; //map_to_u_v_theta_aff	
+		muvt_aff_temp_state = 'b000101101;
     end
     'b000101101:
     begin
-        guess_u = map_to_u_v_theta[31:0];
-        guess_v = map_to_u_v_theta[63:32];
-        guess_t = map_to_u_v_theta[95:64];
-        SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
-        SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
-        ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64]; 
+        //guess_u = map_to_u_v_theta[31:0];
+        //guess_v = map_to_u_v_theta[63:32];
+        //guess_t = map_to_u_v_theta[95:64];
+        //SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
+        //SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
+        //ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64]; 
+		//aff
+		guess_u = map_to_u_v_theta_aff[31:0];
+		guess_v = map_to_u_v_theta_aff[63:32];
+		guess_t = map_to_u_v_theta_aff[95:64];
         //{old_t, old_v, old_u} = map_to_u_v_theta(cx_, cy_);
-        muvt_cx = cx_;
-        muvt_cy = cy_;
-        state = 'b10001101; //map_to_u_v_theta
-        map_to_u_v_theta_temp_state = 'b000101110;
+        //muvt_cx = cx_;
+        //muvt_cy = cy_;
+        //state = 'b10001101; //map_to_u_v_theta
+        //map_to_u_v_theta_temp_state = 'b000101110;
+		//aff
+		muvt_aff_cx = cx_;
+		muvt_aff_cy = cy_;
+		state = 'b110010111; //map_to_u_v_theta_aff	
+		muvt_aff_temp_state = 'b000101110;
     end
     'b000101110:
     begin
-        old_u = map_to_u_v_theta[31:0];
-        old_v = map_to_u_v_theta[63:32];
-        old_t = map_to_u_v_theta[95:64];
-        SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
-        SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
-        ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64];
-        if(converged)
+        //old_u = map_to_u_v_theta[31:0];
+        //old_v = map_to_u_v_theta[63:32];
+        //old_t = map_to_u_v_theta[95:64];
+        //SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
+        //SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
+        //ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64];
+		//aff
+		old_u = map_to_u_v_theta_aff[31:0];
+		old_v = map_to_u_v_theta_aff[63:32];
+		old_t = map_to_u_v_theta_aff[95:64];
+		//state = 'b101110110; //test_for_convergence
+        //test_for_convergence_temp_state = 'b101111011; //Upd
+		//aff
+		state = 'b1110001011; //test_for_convergence_aff
+		test_for_convergence_aff_temp_state = 'b101111011;
+    end
+	'b101111011:
+	begin
+		if(converged)
         begin
-            state = 'b000101111; //'b000101110;
+            state = 'b000101111;
         end
         else
         begin
             solve_it = solve_it + 1;
-            state = 'b000000111; 
+            state = 'b1110100011; 
         end
-    end
-    'b000101111: //'b000101110:
+	end
+	'b1110100011:
+	begin
+	   // zero out the storage
+	   i = 0;
+	   state = 'b1110100100;
+	end
+	'b1110100100:
+	begin
+	   if(i <= N)
+	   begin
+	       q[i] = 32'b0;
+	       i = i + 1;
+	       state = 'b1110100100;
+	   end
+	   else
+	   begin
+	       state = 'b000000111; //solve_it
+	   end
+	end
+    'b000101111:
     begin
         if(solve_it > max_solve_its)
         begin
@@ -971,7 +1050,7 @@ begin
            state = 'b000110000;
         end 
     end
-    'b000110000: //'b000101111:
+    'b000110000:
     begin
         if(output_deformed_subset_images_ == 1'b1)
         begin
@@ -981,7 +1060,7 @@ begin
         i = 0;
         state = 'b000110001;
     end
-    'b000110001: //'b000110000:
+    'b000110001:
     begin
         if(i < prev_imgs_size)
         begin
@@ -991,10 +1070,15 @@ begin
         end
         else
         begin
-            state = 'b000110010;
+            state = 'b1110100001;
         end
     end
-    'b000110010: //'b000110001:
+    'b1110100001:
+    begin
+        state = 'b1110100000;   //save_fields
+        save_fields_temp_state = 'b000110010;
+    end
+    'b000110010:
     begin
         // accumulate the displacements
         if(use_incremental_formulation_ == 1'b1)
@@ -1007,7 +1091,7 @@ begin
             state = 'b101110001;
         end
     end
-    'b000110011: //'b000110010:
+    'b000110011:
     begin
         if(i < num_of_subsets)
         begin
@@ -1022,7 +1106,7 @@ begin
             state = 'b101110001;
         end
     end
-    'b000110100: //'b000110011:
+    'b000110100:
     begin
         accumulated_disp = Adder_Float;
         //accumulated_disp = Adder_Float(accumulated_disp, SUBSET_DISPLACEMENT_Y_FS[i]);
@@ -1031,13 +1115,13 @@ begin
         state = 'b1000000; //Adder
         temp_state = 'b000110101;
     end
-    'b000110101: //'b000110100:
+    'b000110101:
     begin
         accumulated_disp = Adder_Float;
         i = i + 1;
         state = 'b000110011;
     end
-    'b000110110: //'b000110101:
+    'b000110110:
     begin
         Process_Done = 32'b1;
         //gam_done = 1'b1;
@@ -1260,9 +1344,13 @@ begin
     begin
         sign= s1 ^ s2; // Sign Calculation
         if(a[30:0] == 31'b0 || b[30:0] == 31'b0) // if any input is 0, output is 0
+        begin
             Multiplier_Float = 32'b0;
+        end
         else
+        begin
             Multiplier_Float = {sign,exponent,product[22:0]}; // Output
+        end
         state = 9'b1001011;         
     end
     9'b1001011: //101
@@ -1464,7 +1552,6 @@ begin
         //t1 = Multiplier_Float (x, x); //x^2
         state = 9'b1000110; //Multiplier
         temp_state = 9'b1011011; 
-        debug_in_b1011010 = 1'b1;
     end
     9'b1011011:
     begin
@@ -1474,11 +1561,9 @@ begin
         b = t1;
         state = 9'b1000110; //Multiplier
         temp_state = 9'b1011100;
-        debug_in_b1011011 = 1'b1;
     end
     9'b1011100:
     begin
-        debug_in_b1011100 = 1'b1;
         t2 = Multiplier_Float;
         //t1 = Divider_Float(t1, 32'b01000000000000000000000000000000); //x^2 / 2
         a = t1;
@@ -1498,7 +1583,6 @@ begin
     9'b1011110:
     begin
         t2 = Divider_Float;
-        debug_4 = t2;
         //t1 = Subtractor_Float(32'b00111111100000000000000000000000, t1); //1 - x^2/2
         a = 32'b00111111100000000000000000000000;
         b = t1;
@@ -1508,7 +1592,6 @@ begin
     9'b1011111:
     begin
         t1 = Subtractor_Float;
-        debug_5 = t1;
         //cos = Adder_Float(t1, t2);
         a = t1;
         b = t2;
@@ -1757,14 +1840,12 @@ begin
     end
     7'b1111100: //gamma_
     begin
-        debug_in_b1111100 = 1'b1;
         gamma_ = 32'b0;
         gamma_i = 0;
         state = 'b1111101;
     end
     'b1111101:
     begin
-        debug_in_b1111101 = 1'b1;
         if(gamma_i < num_pxl_Int) //num_pixels_
         begin
             // The current version does not support this feature (pixel deactivation)
@@ -1793,7 +1874,6 @@ begin
     end
     'b1111110:
     begin
-        debug_in_b1111110 = 1'b1;
         gamma_mean_def = mean[63:32];
         gamma_mean_sum_def = mean[31:0];
         //{mean_ref, mean_sum_ref} = mean(1'b0); //ref
@@ -1803,7 +1883,6 @@ begin
     end
     'b1111111:
     begin
-        debug_in_b1111111 = 1'b1;
         gamma_mean_sum_ref = mean[31:0];
         gamma_mean_ref = mean[63:32];
         //t1 = Subtractor_Float(def_intensities_[i], mean_def);
@@ -1824,7 +1903,6 @@ begin
     end
     'b10000000:
     begin
-        debug_in_b10000000  = 1'b1;
         gamma_t1 = Subtractor_Float;
         //t1 = Divider_Float(t1, mean_sum_def);
         a = gamma_t1;
@@ -1834,7 +1912,6 @@ begin
     end
     'b10000001:
     begin
-        debug_in_b10000001 = 1'b1;
         gamma_t1 = Divider_Float;
         //t2 = Subtractor_Float(ref_intensities_[i], mean_ref);
         if(clk_counter_a == 2'b10)
@@ -1854,7 +1931,6 @@ begin
     end
     'b10000010:
     begin
-        debug_in_b10000010 = 1'b1;
         gamma_t2 = Subtractor_Float;
         //t2 = Divider_Float(t2, mean_sum_ref);
         a = gamma_t2;
@@ -1864,7 +1940,6 @@ begin
     end
     'b10000011:
     begin
-        debug_in_b10000011 = 1'b1;
         gamma_t2 = Divider_Float;
         //value = Subtractor_Float(t1, t2); 
         a = gamma_t1;
@@ -1874,7 +1949,6 @@ begin
     end
     'b10000100:
     begin
-        debug_in_b10000100 = 1'b1;
         value = Subtractor_Float;
         //temp_gamma = Multiplier_Float(value, value);
         a = value;
@@ -1884,7 +1958,6 @@ begin
     end
     'b10000101:
     begin
-        debug_in_b10000101 = 1'b1;
         temp_gamma = Multiplier_Float;
         //gamma_ = Adder_Float(gamma_, temp_gamma);
         a = gamma_;
@@ -1894,7 +1967,6 @@ begin
     end
     'b10000110:
     begin
-        debug_in_b10000110 = 1'b1;
         gamma_ = Adder_Float;
         gamma_i = gamma_i + 1;
         state = 'b1111101; 
@@ -1905,7 +1977,6 @@ begin
         begin
             gamma_ = 32'b10111111100000000000000000000000; //-1.0;
         end
-        debug_in_b10000111  = 1'b1;
         state = gamma_temp_state;
     end
     'b10001000: //insert_motion
@@ -1936,7 +2007,6 @@ begin
     end
     'b10001011:
     begin
-        debug_in_b10001011 = 1'b1;
         QUAD_G_FS = sin;
         //QUAD_H_FS = cos(theta);
         a = im_theta;
@@ -1945,7 +2015,6 @@ begin
     end
     'b10001100:
     begin
-        debug_in_b10001100 = 1'b1;
         QUAD_H_FS = cos;
         QUAD_C_FS = 32'b0;
         QUAD_D_FS = 32'b0;
@@ -1970,7 +2039,6 @@ begin
     end
     'b10001110:
     begin
-        debug_in_b10001110 = 1'b1;
         muvt_cxp = map[31:0];
         muvt_cyp = map[63:32];
         //map_to_u_v_theta[31:0] = Subtractor_Float(cxp, cx); //out_u
@@ -1981,7 +2049,6 @@ begin
     end
     'b10001111:
     begin
-        debug_in_b10001111 = 1'b1;
         map_to_u_v_theta[31:0] = Subtractor_Float;
         //map_to_u_v_theta[63:32] = Subtractor_Float(cyp, cy); //out_v
         a = muvt_cyp;
@@ -1991,7 +2058,6 @@ begin
     end
     'b10010000:
     begin
-        debug_in_b10010000 = 1'b1;
         map_to_u_v_theta[63:32] = Subtractor_Float;
         muvt_rxp = 32'b0;
         muvt_ryp = 32'b0;
@@ -2003,7 +2069,6 @@ begin
     end
     'b10010001:
     begin
-        debug_in_b10010001 = 1'b1;
         muvt_cx_5 = Adder_Float;
         //{rxp, ryp} = map(cx_5,cy,cx,cy);
         map_x = muvt_cx_5;
@@ -2015,7 +2080,6 @@ begin
     end
     'b10010010:
     begin
-        debug_in_b10010010 = 1'b1;
         muvt_ryp = map[31:0];
         muvt_rxp = map[63:32];
         //ax = Subtractor_Float(rxp, cxp);
@@ -2070,7 +2134,6 @@ begin
     end
     'b10011000:
     begin
-        debug_in_b10011000 = 1'b1;
         muvt_mag_a = SQRT;
         muvt_bx = 32'b01000000101000000000000000000000; //5
         muvt_by = 32'b0;
@@ -2119,7 +2182,6 @@ begin
     end
     'b10011101:
     begin
-        debug_in_b10011101 = 1'b1;
         muvt_a_dot_b_over_mags = Divider_Float;
         if(muvt_ay[31] == 1'b1)
         begin
@@ -2132,7 +2194,6 @@ begin
     end
     'b10011110:
     begin
-        debug_in_b10011110 = 1'b1;
         //a_dot_b_over_mags = acos(a_dot_b_over_mags);
         a = muvt_a_dot_b_over_mags;
         state = 'b1110010; //acos
@@ -2140,7 +2201,6 @@ begin
     end
     'b10011111:
     begin
-        debug_In_b10011111 = 1'b1;
         muvt_a_dot_b_over_mags = acos;
         //map_to_u_v_theta[95:64] = Subtractor_Float(32'b01000000110010010000111111011010, a_dot_b_over_mags);//2*pi
         a = 32'b01000000110010010000111111011010;
@@ -2150,13 +2210,11 @@ begin
     end
     'b10100000:
     begin
-        debug_in_b10100000 = 1'b1;
         map_to_u_v_theta[95:64] = Subtractor_Float;
         state = 'b10100010;
     end
      'b10100001:
      begin
-        debug_in_b10100001 = 1'b1;
         //map_to_u_v_theta[95:64] = acos(a_dot_b_over_mags);
         a = muvt_a_dot_b_over_mags;
         state = 'b1110010; //acos
@@ -2169,7 +2227,6 @@ begin
      end
      'b10100010:
      begin
-        debug_in_b10100010 = 1'b1;
         state = map_to_u_v_theta_temp_state;
      end
      'b10100011: //map
@@ -2595,23 +2652,28 @@ begin
         ig4_id = 32'b0;
         ig4_dist_ = 32'b0;
         //insert_motion_out = insert_motion (u, v, t); 
-        im_u = ig4_u;
-        im_v = ig4_v;
-        im_theta = ig4_t;
-        state = 'b10001000; //insert_motion
-        insert_motion_temp_state = 'b11001100;
+        //im_u = ig4_u;
+        //im_v = ig4_v;
+        //im_theta = ig4_t;
+        //state = 'b10001000; //insert_motion
+        //insert_motion_temp_state = 'b11001100;
+		//aff
+		imaff_u = ig4_u;
+		imaff_v = ig4_v;
+		imaff_theta = ig4_t;
+		state = 'b1110001010; //insert_motion_aff
+		insert_motion_aff_temp_state = 'b11001100;
      end
      'b11001100:
      begin
-        debug_in_b11001100 = 1'b1;
-        insert_motion_out = insert_motion;
+        //insert_motion_out = insert_motion;
+		//aff
         //gamma = gamma_(1'b1);
         state = 'b1111100; //gamma_
         gamma_temp_state = 'b11001101; 
      end
      'b11001101:
      begin
-        debug_in_b11001101 = 1'b1;
         ig4_gamma = gamma_;
         if(ig4_gamma[31] == 1'b1)
             ig4_gamma = 32'b01000000100000000000000000000000; //4
@@ -2652,10 +2714,15 @@ begin
             //{best_t, best_v, best_u} = map_to_u_v_theta(centroid_x,centroid_y); //centroid_x(), centroid_y()
             //muvt_cx = centroid_x[subset_range_selection-:32];           
             //muvt_cy = centroid_y[subset_range_selection-:32];
-            muvt_cx = cx_;
-            muvt_cy = cy_;
-            state = 'b10001101; //map_to_u_v_theta 
-            map_to_u_v_theta_temp_state = 'b11010000;
+            //muvt_cx = cx_;
+            //muvt_cy = cy_;
+            //state = 'b10001101; //map_to_u_v_theta 
+            //map_to_u_v_theta_temp_state = 'b11010000;
+			//aff
+			muvt_aff_cx = cx_;
+			muvt_aff_cy = cy_;
+			state = 'b110010111; //map_to_u_v_theta_aff
+			muvt_aff_temp_state = 'b11010000;
         end
         else
         begin
@@ -2665,25 +2732,35 @@ begin
      end
      'b11010000: //'b1101011:
      begin
-        ig4_best_u = map_to_u_v_theta[31:0];
-        ig4_best_v = map_to_u_v_theta[63:32];
-        ig4_best_t = map_to_u_v_theta[95:64];
-        SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
-        SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
-        ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64];
+        //ig4_best_u = map_to_u_v_theta[31:0];
+        //ig4_best_v = map_to_u_v_theta[63:32];
+        //ig4_best_t = map_to_u_v_theta[95:64];
+        //SUBSET_DISPLACEMENT_X_FS[gid] = map_to_u_v_theta[31:0];
+        //SUBSET_DISPLACEMENT_Y_FS[gid] = map_to_u_v_theta[63:32]; 
+        //ROTATION_Z_FS[gid] = map_to_u_v_theta[95:64];
+		//aff
+		ig4_best_u = map_to_u_v_theta_aff[31:0];
+        ig4_best_v = map_to_u_v_theta_aff[63:32];
+        ig4_best_t = map_to_u_v_theta_aff[95:64];
         ig4_neigh = ig4_neigh + 1;
         state = 'b101101100; //'b11001111;
      end
      'b11010001: //'b1101100:
      begin
         //insert_motion_out = insert_motion(best_u,best_v,best_t);
-        im_u = ig4_best_u;
-        im_v = ig4_best_v;
-        im_theta = ig4_best_t;
-        state = 'b10001000; //insert_motion
-        insert_motion_temp_state = 'b11010010;
+        //im_u = ig4_best_u;
+        //im_v = ig4_best_v;
+        //im_theta = ig4_best_t;
+        //state = 'b10001000; //insert_motion
+        //insert_motion_temp_state = 'b11010010;
+		//aff
+		imaff_u = ig4_best_u;
+		imaff_v = ig4_best_v;
+		imaff_theta = ig4_best_t;
+		state = 'b1110001010; //insert_motion_aff
+		insert_motion_aff_temp_state = 'b11010010;
      end
-     'b11010010: //'b1101101:
+     'b11010010:
      begin
         state = initial_guess_4_temp_state;
      end
@@ -2754,7 +2831,9 @@ begin
             //map_y = y[initialize_i];
             if(clk_counter_scx == 2'b10)
             begin
-                map_x = x;
+                //map_x = x;
+				//aff
+				map_aff_x = x;
                 clk_counter_scx =  2'b00;
                 clk_counter_scy = 2'b01;
                 state = 'b11010101;                       
@@ -2767,13 +2846,23 @@ begin
             end
             else if(clk_counter_scy == 2'b11)
             begin
-                map_y = y;
+                //map_y = y;
+				//aff
+				map_aff_y = y;
                 clk_counter_scy =  2'b00;
                 //go to the next state
-                map_cx = cx_;
-                map_cy = cy_;
-                state = 'b10100011; //map
-                map_temp_state = 'b11010110;
+                //map_cx = cx_;
+				//aff
+				map_aff_cx = cx_;
+                //map_cy = cy_;
+				//aff
+				map_aff_cy = cy_;
+                //state = 'b10100011; //map
+				//aff
+				state = 'b101111111; //map_aff
+                //map_temp_state = 'b11010110;
+				//aff
+				map_aff_temp_state = 'b11010110;
             end
             else
             begin
@@ -2784,14 +2873,16 @@ begin
         end
         else
         begin
-            debug_in_b11010101_else = 1'b1;
             state = 'b11100010; //'b1111101;
         end
      end
      'b11010110: //'b1110001:
      begin
-        initialize_mapped_x = map[31:0];
-        initialize_mapped_y = map[63:32];
+        //initialize_mapped_x = map[31:0];
+        //initialize_mapped_y = map[63:32];
+		//aff
+		initialize_mapped_x = map_aff[31:0];
+		initialize_mapped_y = map_aff[63:32];
         if(initialize_mapped_x[23] == 1'b1) //(int_t)(mapped_x + 0.5) == (int_t)(mapped_x)
         begin
             initialize_px = initialize_mapped_x;
@@ -2918,7 +3009,6 @@ begin
      end
      'b11100010: //'b1111101:
      begin
-        debug_in_b11100010 = 1'b1;
         if (initialize_target == 1'b0)
         begin
             if(has_gradients_ == 1'b1)
@@ -2938,7 +3028,6 @@ begin
      end
      'b11100011: //'b1111110:
      begin
-        debug_in_b11100011 = 1'b1;
         if(initialize_i < num_pxl_Int) //num_pixels_
         begin
             //t1 = Subtractor_Float(x_[i], offset_x);
@@ -3020,7 +3109,6 @@ begin
      end
      'b11100110: //'b10000001:
      begin
-        debug_in_b11100110 = 1'b1;
         state = initialize_temp_state;
      end
      'b11100111: //'b10000010: //residuals
@@ -3047,7 +3135,6 @@ begin
         residuals_Gy = residuals_gy;
         if(residuals_use_ref_grads == 1'b1)
         begin
-            debug_in_b11101001 = 1'b1;
             residuals_u = 32'b0;
             residuals_v = 32'b0;
             residuals_theta = 32'b0;
@@ -3064,7 +3151,6 @@ begin
      end
      'b11101010: //'b10000101:
      begin
-        debug_in_b11101010 = 1'b1;
         residuals_u = map_to_u_v_theta[31:0];
         residuals_v = map_to_u_v_theta[63:32];
         residuals_theta = map_to_u_v_theta[95:64];
@@ -4104,7 +4190,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101010110;
      end
-     'b101010110: //'b101110000:
+     'b101010110:
      begin
         igyb_t4 = Multiplier_Float;
         //t1 = Multiplier_Float(y2, width_in);
@@ -4160,7 +4246,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101011011;
      end
-     'b101011011: //'b101110101:
+     'b101011011:
      begin
         igyb_t1 = Multiplier_Float;
         //t2 = Subtractor_Float(local_y, y1); //(local_y-y1)
@@ -4169,7 +4255,7 @@ begin
         state = 7'b1000101; //Subtractor
         temp_state = 'b101011100;
      end
-     'b101011100: //'b101110110:
+     'b101011100:
      begin
         igyb_t2 = Subtractor_Float;
         //t5 = Multiplier_Float(t1, t2); //intensities_[y2*width_+x2]*(local_x-x1)*(local_y-y1) 
@@ -4178,7 +4264,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101011101;
      end
-     'b101011101: //'b101110111:
+     'b101011101:
      begin
         igyb_t5 = Multiplier_Float;
         //t1 = Multiplier_Float(y2, width_in);
@@ -4187,7 +4273,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101011110;
      end
-     'b101011110: //'b101111000:
+     'b101011110:
      begin
         igyb_t1 = Multiplier_Float;
         //t1 = Adder_Float(t1, x1);
@@ -4196,7 +4282,7 @@ begin
         state = 7'b1000000; //Adder
         temp_state = 'b101011111;
      end
-     'b101011111: //'b101111001:
+     'b101011111:
      begin
         igyb_t1 = Adder_Float;
         //t1 = Float_to_Int(t1);
@@ -4204,7 +4290,7 @@ begin
         state = 'b101101001; //Float_to_Int
         Float_to_Int_temp_state = 'b101100000;
      end
-     'b101100000: //'b101111010:
+     'b101100000:
      begin
         igyb_t1 = Float_to_Int;
         //igyb_t1 = grad_y_[igyb_t1]; //intensities_[y2*width_+x1]
@@ -4225,7 +4311,7 @@ begin
             state = 'b101100000;
         end
      end
-     'b101100001: //'b101111011:
+     'b101100001:
      begin
         igyb_t2 = Subtractor_Float;
         //t1 = Multiplier_Float(t1, t2);
@@ -4234,7 +4320,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101100010;
      end
-     'b101100010: //'b101111100:
+     'b101100010:
      begin
         igyb_t1 = Multiplier_Float;
         //t2 = Subtractor_Float(local_y, y1); //(local_y-y1)
@@ -4243,7 +4329,7 @@ begin
         state = 7'b1000101; //Subtractor
         temp_state = 'b101100011;
      end
-     'b101100011: //'b101111101:
+     'b101100011:
      begin
         igyb_t2 = Subtractor_Float;
         //t6 = Multiplier_Float(t1, t2); //intensities_[y2*width_+x1]*(x2-local_x)*(local_y-y1) 
@@ -4252,7 +4338,7 @@ begin
         state = 7'b1000110; //Multiplier
         temp_state = 'b101100100;
      end
-     'b101100100: //'b101111110:
+     'b101100100:
      begin
         igyb_t6 = Multiplier_Float;
         //t3 = Adder_Float(t3, t4);
@@ -4261,7 +4347,7 @@ begin
         state = 7'b1000000; //Adder
         temp_state = 'b101100101;
      end
-     'b101100101: //'b101111111:
+     'b101100101:
      begin
         igyb_t3 = Adder_Float;
         //t3 = Adder_Float(t3, t5);
@@ -4270,7 +4356,7 @@ begin
         state = 7'b1000000; //Adder
         temp_state = 'b101100110;
      end
-     'b101100110: //'b110000000:
+     'b101100110:
      begin
         igyb_t3 = Adder_Float;
         //interpolate_grad_y_bilinear = Adder_Float(t3, t6);   
@@ -4312,7 +4398,7 @@ begin
             state = 'b101101010;
         end
      end
-     'b101101010: //'b110000011:
+     'b101101010:
      begin
         if( fti_i < 32)
         begin
@@ -4346,6 +4432,741 @@ begin
         Float_to_Int = fti_s_output_z;
         state = Float_to_Int_temp_state;
      end
+	 'b101110101: //Update //Upd
+	 begin
+	   l = 0;
+	   state = 'b101111100;
+	 end
+	 'b101111100:
+	 begin
+	   if(l <= N)
+	   begin
+	       a = parameters_[l];
+	       b = def_update[l];
+	       state = 7'b1000000; //Adder
+	       temp_state = 'b101111101;
+	   end
+	   else
+	   begin
+	       state = 'b101111110;
+	   end
+	 end
+	 'b101111101:
+	 begin
+	    parameters_[l] = Adder_Float;
+	    l = l + 1;
+	    state = 'b101111100;
+	 end
+	 'b101111110:
+	 begin
+	   state = update_temp_state;
+	 end
+	 'b101110110: //test_for_convergence
+	 begin
+		converged = 1'b1;
+		p = 0;
+		state = 'b101111000;	
+	 end
+	 'b101111000:
+	 begin
+		if(p <= N)
+		begin
+			//if(std::abs(parameters_[i] - old_parameters[i]) >= tol)
+			a = residuals_out[p*32+31-:32];
+			b = def_old[p];
+			state = 7'b1000101; //Subtractor
+			temp_state = 'b101110111;
+		end
+		else
+		begin
+			state = 'b101111001;
+		end
+	 end
+	 'b101110111:
+	 begin
+		if(less_than(fast_solver_tolerance, Subtractor_Float))
+		begin
+			//converged = false;
+			converged = 1'b0;
+		end
+		else
+		begin
+		   converged = 1'b1;
+		end
+		p = p + 1;
+		state = 'b101111000;
+	 end
+	 'b101111001:
+	 begin
+		state = test_for_convergence_temp_state;
+	 end
+	 'b101111111: //map_aff
+	 begin
+		map_aff_dx = 32'b0;
+		map_aff_dy = 32'b0;
+		map_aff_Dx = 32'b0;
+		map_aff_Dy = 32'b0;
+		a = parameters_[2]; //ROTATION_Z_FS[gid];
+		state = 'b1011010; //cos
+		cos_temp_state = 'b110000000;
+	 end
+	 'b110000000:
+	 begin
+		map_aff_cost = cos;
+		a = parameters_[2]; //ROTATION_Z_FS[gid];
+		state = 'b1100001; //sin
+		sin_temp_state = 'b110000001;
+	 end
+	 'b110000001:
+	 begin
+		map_aff_sint = sin;
+		a = map_aff_x;
+		b = map_aff_cx;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110000010;
+	 end
+	 'b110000010:
+	 begin
+		map_aff_dx = Subtractor_Float;
+		a = map_aff_y;
+		b = map_aff_cy;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110000011;
+	 end
+	 'b110000011:
+	 begin
+		map_aff_dy = Subtractor_Float;
+		a = parameters_[3]; //NORMAL_STRETCH_XX_FS[gid];
+		b = 32'b00111111100000000000000000000000; //1
+		state = 7'b1000000; //Adder
+		temp_state = 'b1110100010;
+	 end
+	 'b1110100010:
+	 begin
+	    a = Adder_Float;
+	    b = map_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110000101;
+	 end
+	 'b110000101:
+	 begin
+		map_aff_t1 = Multiplier_Float; //(1.0+parameter(NORMAL_STRETCH_XX_FS))*dx
+		a = parameters_[5]; //SHEAR_STRETCH_XY_FS[gid];
+		b = map_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110000110;
+	 end
+	 'b110000110:
+	 begin
+		map_aff_t2 = Multiplier_Float; //parameter(SHEAR_STRETCH_XY_FS)*dy
+		a = map_aff_t1;
+		b = map_aff_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110000111;
+	 end
+	 'b110000111:
+	 begin
+		map_aff_Dx = Adder_Float;
+		a = parameters_[4]; //NORMAL_STRETCH_YY_FS[gid];
+		b = 32'b00111111100000000000000000000000; //1
+		state = 7'b1000000; //Adder
+		temp_state = 'b110001000;
+	 end
+	 'b110001000:
+	 begin
+		a = Adder_Float;
+		b = map_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110001001;
+	 end
+	 'b110001001:
+	 begin
+		map_aff_t1 = Multiplier_Float; //(1.0+parameter(NORMAL_STRETCH_YY_FS))*dy
+		a = parameters_[5]; //SHEAR_STRETCH_XY_FS[gid];
+		b = map_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110001010;
+	 end
+	 'b110001010:
+	 begin
+		map_aff_t2 = Multiplier_Float; //parameter(SHEAR_STRETCH_XY_FS)*dx
+		a = map_aff_t1;
+		b = map_aff_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110001100;
+	 end
+	 'b110001100:
+	 begin
+		map_aff_Dy = Adder_Float;
+		a = map_aff_cost;
+		b = map_aff_Dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110001101;
+	 end
+	 'b110001101:
+	 begin
+		map_aff_t1 = Multiplier_Float;
+		a = map_aff_sint;
+		b = map_aff_Dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110001110;
+	 end
+	 'b110001110:
+	 begin
+		map_aff_t2 = Multiplier_Float;
+		a = map_aff_t1;
+		b = map_aff_t2;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110001111;
+	 end
+	 'b110001111:
+	 begin
+		map_aff_t3 = Subtractor_Float;
+		a = parameters_[0]; //SUBSET_DISPLACEMENT_X_FS[gid];
+		b = map_aff_t3;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110010000;
+	 end
+	 'b110010000:
+	 begin
+		a = Adder_Float;
+		b = map_aff_cx;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110010001;
+	 end
+	 'b110010001:
+	 begin
+		map_aff_out_x = Adder_Float;
+		a = map_aff_sint;
+		b = map_aff_Dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110010010;
+	 end
+	 'b110010010:
+	 begin
+		map_aff_t1 = Multiplier_Float;
+		a = map_aff_cost;
+		b = map_aff_Dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110010011;
+	 end
+	 'b110010011:
+	 begin
+		map_aff_t2 = Multiplier_Float;
+		a = map_aff_t1;
+		b = map_aff_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110010100;
+	 end
+	 'b110010100:
+	 begin
+		a = Adder_Float;
+		b = parameters_[1]; //SUBSET_DISPLACEMENT_Y_FS[gid];
+		state = 7'b1000000; //Adder
+		temp_state = 'b110010101;
+	 end
+	 'b110010101:
+	 begin
+		a = Adder_Float;
+		b = map_aff_cy;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110010110;
+	 end
+	 'b110010110:
+	 begin
+		map_aff_out_y = Adder_Float;
+		map_aff[31:0] = map_aff_out_x;
+		map_aff[63:32] = map_aff_out_y;
+		state = map_aff_temp_state;
+	 end
+	 'b110010111: //map_to_u_v_theta_aff
+	 begin
+		map_to_u_v_theta_aff[31:0] = parameters_[0]; //SUBSET_DISPLACEMENT_X_FS[gid];
+		map_to_u_v_theta_aff[63:32] = parameters_[1]; //SUBSET_DISPLACEMENT_Y_FS[gid];
+		map_to_u_v_theta_aff[95:64] = parameters_[2];//ROTATION_Z_FS[gid];
+		state = muvt_aff_temp_state;
+	 end	 
+	'b1110010000: //residuals_aff
+	begin
+        residuals_aff_dx = 32'b0;
+        residuals_aff_dy = 32'b0;
+        residuals_aff_Dx = 32'b0; 
+        residuals_aff_Dy = 32'b0;
+        residuals_aff_delTheta = 32'b0;
+        residuals_aff_delEx = 32'b0;
+        residuals_aff_delEy = 32'b0;
+        residuals_aff_delGxy = 32'b0;
+        residuals_aff_Gx = 32'b0;
+        residuals_aff_Gy = 32'b0;
+        residuals_aff_theta = 32'b0;
+        residuals_aff_dudx = 32'b0;
+        residuals_aff_dvdy = 32'b0;
+        residuals_aff_gxy = 32'b0;
+        residuals_aff_cosTheta = 32'b0;
+        residuals_aff_sinTheta = 32'b0;
+        residulas_t1 = 32'b0;
+        residulas_t2 = 32'b0;
+        residulas_t3 = 32'b0;
+        residulas_t4 = 32'b0;
+        residulas_t5 = 32'b0;
+        residulas_t6 = 32'b0;
+        residuals_aff = 192'b0;
+		residuals_aff_theta = parameters_[2]; //ROTATION_Z_FS[gid];
+		residuals_aff_dudx = parameters_[3]; //NORMAL_STRETCH_XX_FS[gid];
+		residuals_aff_dvdy = parameters_[4]; //NORMAL_STRETCH_YY_FS[gid];
+		residuals_aff_gxy = parameters_[5]; //SHEAR_STRETCH_XY_FS[gid];
+		a = residuals_aff_theta;
+		state = 'b1011010; //cos
+		cos_temp_state = 'b110011000;
+	end
+	'b110011000:
+	begin
+		residuals_aff_cosTheta = cos;
+		a = residuals_aff_theta;
+		state = 'b1100001; //sin
+		sin_temp_state = 'b110011001;
+	end
+	'b110011001:
+	begin
+		residuals_aff_sinTheta = sin;
+		a = residuals_aff_x;
+		b = residuals_aff_cx;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110011010;
+	end
+	'b110011010:
+	begin
+		residuals_aff_dx = Subtractor_Float;
+		a = residuals_aff_y;
+		b = residuals_aff_cy;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110011011;
+	end
+	'b110011011:
+	begin
+		residuals_aff_dy = Subtractor_Float;
+		a = 32'b00111111100000000000000000000000; //1
+		b = residuals_aff_dudx;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110011100;
+	end
+	'b110011100:
+	begin
+		a = Adder_Float;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110011101;
+	end
+	'b110011101:
+	begin
+		residulas_t1 = Multiplier_Float;
+		a = residuals_aff_gxy;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110011110;
+	end
+	'b110011110:
+	begin
+		a = Multiplier_Float;
+		b = residulas_t1;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110011111;
+	end
+	'b110011111:
+	begin
+		residuals_aff_Dx = Adder_Float;
+		a = 32'b00111111100000000000000000000000; //1
+		b = residuals_aff_dvdy;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110100000;
+	end
+	'b110100000:
+	begin
+		a = Adder_Float;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110100001;
+	end
+	'b110100001:
+	begin
+		residulas_t2 = Multiplier_Float;
+		a = residuals_aff_gxy;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110100010;
+	end
+	'b110100010:
+	begin
+		a = Multiplier_Float;
+		b = residulas_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110100011;
+	end
+	'b110100011:
+	begin
+		residuals_aff_Dy = Adder_Float;
+		if(residuals_aff_use_ref_grads == 1'b1)
+		begin
+			a = residuals_aff_cosTheta;
+			b = residuals_aff_gx;
+			state = 7'b1000110; //Multiplier
+			temp_state = 'b110100100;
+		end
+		else
+		begin
+			residuals_aff_Gx = residuals_aff_gx;
+			residuals_aff_Gy = residuals_aff_gy;
+			state = 'b110101010;
+		end
+	end
+	'b110100100:
+	begin
+		residulas_t1 = Multiplier_Float;
+		a = residuals_aff_sinTheta;
+		b = residuals_aff_gy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110100101;
+	end
+	'b110100101:
+	begin
+		residulas_t2 = Multiplier_Float;
+		a = residulas_t1;
+		b = residulas_t2;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110100110;
+	end
+	'b110100110:
+	begin
+		residuals_aff_Gx = Subtractor_Float;
+		a = residuals_aff_sinTheta;
+		b = residuals_aff_gx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110100111;
+	end
+	'b110100111:
+	begin
+		residulas_t1 = Multiplier_Float;
+		a = residuals_aff_cosTheta;
+		b = residuals_aff_gy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110101000;
+	end
+	'b110101000:
+	begin
+		residulas_t2 = Multiplier_Float;
+		a = residulas_t1;
+		b = residulas_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110101001;
+	end
+	'b110101001:
+	begin
+		residuals_aff_Gy = Adder_Float;
+		state = 'b110101010;
+	end
+	'b110101010:
+	begin
+		a[31] = 1'b1;
+		a[30:0] = residuals_aff_sinTheta[30:0];
+		b = residuals_aff_Dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110101011;
+	end
+	'b110101011:
+	begin
+		residulas_t1 = Multiplier_Float;
+		a[31] = 1'b1;
+		a[30:0] = residuals_aff_cosTheta[30:0];
+		b = residuals_aff_Dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110101100;
+	end
+	'b110101100:
+	begin
+		residulas_t2 = Multiplier_Float;
+		a = residulas_t1;
+		b = residulas_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110101101;
+	end
+	'b110101101:
+	begin
+		residulas_t3 = Adder_Float;
+		a = residuals_aff_Gx;
+		b = residulas_t3;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110101110;
+	end
+	'b110101110:
+	begin
+		residulas_t4 = Multiplier_Float; //Gx*(-sinTheta*Dx - cosTheta*Dy)
+		a = residuals_aff_cosTheta;
+		b = residuals_aff_Dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110101111;		
+	end
+	'b110101111:
+	begin
+		residulas_t1 = Multiplier_Float;
+		a = residuals_aff_sinTheta;
+		b = residuals_aff_Dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110000;
+	end
+	'b110110000:
+	begin
+		residulas_t2 = Multiplier_Float;
+		a = residulas_t1;
+		b = residulas_t2;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110110001;
+	end
+	'b110110001:
+	begin
+		residulas_t3 = Subtractor_Float;
+		a = residuals_aff_Gy;
+		b = residulas_t3;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110010;
+	end
+	'b110110010:
+	begin
+		residulas_t5 = Multiplier_Float; //Gy*(cosTheta*Dx - sinTheta*Dy)
+		a = residulas_t4;
+		b = residulas_t5;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110110011;
+	end
+	'b110110011:
+	begin
+		residuals_aff_delTheta = Adder_Float; //delTheta = Gx*(-sinTheta*Dx - cosTheta*Dy) + Gy*(cosTheta*Dx - sinTheta*Dy);
+		a = residuals_aff_Gx;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110100;
+	end
+	'b110110100:
+	begin
+		a = Multiplier_Float;
+		b = residuals_aff_cosTheta;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110101;
+	end
+	'b110110101:
+	begin
+		residulas_t1 = Multiplier_Float; //Gx*dx*cosTheta
+		a = residuals_aff_Gy;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110110;	
+	end
+	'b110110110:
+	begin
+		a = Multiplier_Float;
+		b = residuals_aff_sinTheta;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110110111;
+	end
+	'b110110111:
+	begin
+		residulas_t2 = Multiplier_Float; //Gy*dx*sinTheta
+		a = residulas_t1;
+		b = residulas_t2;
+		state = 7'b1000000; //Adder
+		temp_state = 'b110111000;
+	end
+	'b110111000:
+	begin
+		residuals_aff_delEx = Adder_Float; //delEx = Gx*dx*cosTheta + Gy*dx*sinTheta;
+		a = residuals_aff_Gx;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111001;
+	end
+	'b110111001:
+	begin
+		a = Multiplier_Float;
+		b = residuals_aff_sinTheta;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111010;
+	end
+	'b110111010:
+	begin
+		residulas_t1 = Multiplier_Float; //Gx*dy*sinTheta 
+		a = residuals_aff_Gy;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111011;
+	end
+	'b110111011:
+	begin
+		a = Multiplier_Float;
+		b = residuals_aff_cosTheta;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111100;
+	end
+	'b110111100:
+	begin
+		residulas_t2 = Multiplier_Float; //Gy*dy*cosTheta
+		a = residulas_t2;
+		b = residulas_t1;
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b110111101;
+	end
+	'b110111101:
+	begin
+		residuals_aff_delEy = Subtractor_Float; //delEy = -Gx*dy*sinTheta + Gy*dy*cosTheta;
+		a = residuals_aff_cosTheta;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111110;
+	end
+	'b110111110:
+	begin
+		residulas_t1 = Multiplier_Float; //cosTheta*dy 
+		a = residuals_aff_sinTheta;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b110111111;
+	end
+	'b110111111:
+	begin
+		b = Multiplier_Float; //sinTheta*dx
+		a = residulas_t1;		
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b111000000;
+	end
+	'b111000000:
+	begin
+		a = Subtractor_Float; //(cosTheta*dy - sinTheta*dx)
+		b = residuals_aff_Gx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b111000001;
+	end
+	'b111000001:
+	begin
+		residulas_t2 = Multiplier_Float; //Gx*(cosTheta*dy - sinTheta*dx)
+		a = residuals_aff_sinTheta;
+		b = residuals_aff_dy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b1110000100;
+	end
+	'b1110000100:
+	begin
+		residulas_t3 = Multiplier_Float;
+		a = residuals_aff_cosTheta;
+		b = residuals_aff_dx;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b1110000101;
+	end
+	'b1110000101:
+	begin
+		a = Multiplier_Float;
+		b = residulas_t3;
+		state = 7'b1000000; //Adder
+		temp_state = 'b1110000110;
+	end
+	'b1110000110:
+	begin
+		a = Adder_Float; //(sinTheta*dy + cosTheta*dx)
+		b = residuals_aff_Gy;
+		state = 7'b1000110; //Multiplier
+		temp_state = 'b1110000111;
+	end
+	'b1110000111:
+	begin
+		residulas_t4 = Multiplier_Float; //Gy*(sinTheta*dy + cosTheta*dx)
+		a = residulas_t2;
+		b = residulas_t4;
+		state = 7'b1000000; //Adder
+		temp_state = 'b1110001000;
+	end
+	'b1110001000:
+	begin
+		residuals_aff_delGxy = Adder_Float; //delGxy = Gx*(cosTheta*dy - sinTheta*dx) + Gy*(sinTheta*dy + cosTheta*dx);
+		state = 'b1110001001;
+	end
+	'b1110001001:
+	begin
+		residuals_aff[31:0] = residuals_aff_Gx; //SUBSET_DISPLACEMENT_X_FS[gid] = residuals_aff_Gx;
+		residuals_aff[63:32] = residuals_aff_Gy; //SUBSET_DISPLACEMENT_Y_FS[gid] = residuals_aff_Gy;
+		residuals_aff[95:64] = residuals_aff_delTheta; //ROTATION_Z_FS[gid] = residuals_aff_delTheta;
+		residuals_aff[127:96] = residuals_aff_delEx; //NORMAL_STRETCH_XX_FS[gid] = residuals_aff_delEx;
+		residuals_aff[159:128] = residuals_aff_delEy; //NORMAL_STRETCH_YY_FS[gid] = residuals_aff_delEy;
+		residuals_aff[191:160] = residuals_aff_delGxy; //SHEAR_STRETCH_XY_FS[gid] = residuals_aff_delGxy;
+		state = residuals_aff_temp_state;
+	end
+	'b1110001010: //insert_motion_aff
+	begin
+		parameters_[0] = imaff_u; //SUBSET_DISPLACEMENT_X_FS[gid] = imaff_u;
+		parameters_[1] = imaff_v; //SUBSET_DISPLACEMENT_Y_FS[gid] = imaff_v;
+		parameters_[2] = imaff_theta; //ROTATION_Z_FS[gid] = imaff_theta;
+		state = insert_motion_aff_temp_state;
+	end
+	'b1110001011: //test_for_convergence_aff
+	begin
+		a = parameters_[0];
+		b = def_old[0];
+		state = 7'b1000101; //Subtractor
+		temp_state = 'b1110001100;
+	end
+	'b1110001100:
+	begin
+		if(less_than(fast_solver_tolerance, Subtractor_Float))
+		begin
+			converged = 1'b0;
+			state = 'b1110001111;
+		end
+		else
+		begin
+			a = parameters_[1];
+			b = def_old[1];
+			state = 7'b1000101; //Subtractor
+			temp_state = 'b1110001101;
+		end
+	end
+	'b1110001101:
+	begin
+		if(less_than(fast_solver_tolerance, Subtractor_Float))
+		begin
+			converged = 1'b0;
+			state = 'b1110001111;
+		end
+		else
+		begin
+			a = parameters_[2];
+			b = def_old[2];
+			state = 7'b1000101; //Subtractor
+			temp_state = 'b1110001110;
+		end
+	end
+	'b1110001110:
+	begin
+		if(less_than(fast_solver_tolerance, Subtractor_Float))
+		begin
+			converged = 1'b0;
+			state = 'b1110001111;
+		end
+		else
+		begin
+			state = 'b1110001111;
+		end
+	end
+	'b1110001111:
+	begin
+		state = test_for_convergence_aff_temp_state;
+	end
+    'b1110100000:   //save_fields
+    begin
+        SUBSET_DISPLACEMENT_X_FS[gid] = parameters_[0];
+        SUBSET_DISPLACEMENT_Y_FS[gid] = parameters_[1];
+        ROTATION_Z_FS[gid] = parameters_[2];
+        NORMAL_STRETCH_XX_FS[gid] = parameters_[3];
+        NORMAL_STRETCH_YY_FS[gid] = parameters_[4];
+        SHEAR_STRETCH_XY_FS[gid] = parameters_[5];
+        state = save_fields_temp_state;
+    end
+    //last statet b1110100101
     endcase
     
 end //always
