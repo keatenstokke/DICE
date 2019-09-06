@@ -91,7 +91,7 @@ module Save_Results(
         begin
             result_done = 32'b1;
             Save_Done = 32'b1;			
-			/*if(gamma_done == 1'b1)
+		/*if(gamma_done == 1'b1)
             begin
                 state = 6'b010111;
             end
