@@ -42,13 +42,13 @@ reg [47:0]prod;
 reg [23:0] product;
 reg multiplier_done;
 
-reg [31:0] k = 32'b0; //addressing, nener resets
+reg [31:0] k = 32'b0; //addressing, never resets
 reg [31:0] lc = 32'b0; //loop_counter_resets for each subset
 reg [31:0] temp_reminder;
 reg [31:0] k1;
 reg [31:0] pxl_cnt_Int = 32'b0;
 reg [31:0] pxl_cnt_FP = 32'b0;
-
+reg [31:0] first_x, first_y, last_x, last_y;
 reg [5:0] debug_addr_x;
 reg in_if_debug, in_else_debug;
 
@@ -110,14 +110,15 @@ begin
         begin
             pxl_cnt_Int = 32'b0;
             pxl_cnt_FP = 32'b0;
+            state = 'b1000000;
             //k = 0;
-            lc = 32'b0;
-            sub_pxl_counter = subset_size;
-            a = subset_centerpoint_x;
-            b = half_subset_size;
-            loop_counter = subset_size * subset_size; 
-            state = 'b1111; //Call Subtractor
-            temp_state = 'b0001;
+            //lc = 32'b0;
+            //sub_pxl_counter = subset_size;
+            //a = subset_centerpoint_x;
+            //b = half_subset_size;
+            //loop_counter = subset_size * subset_size; 
+            //state = 'b1111; //Call Subtractor
+            //temp_state = 'b0001;
         end
         else if(subset_shape == 32'b0) //circle
         begin
@@ -127,145 +128,136 @@ begin
         end      
      end 
      ///////////////////////////////// Square //////////////////////////////  
-     'b0001:
+     'b1000000:
      begin
-         //x[k * 32 + 31 -: 32] = Subtractor_Float;
+        a = subset_centerpoint_x;
+        b = half_subset_size;
+        state = 'b1111; //Subtractor
+        temp_state = 'b1000001;
+     end
+     'b1000001:
+     begin
          addr_x = k;
-         debug_addr_x = k;
          din_x = Subtractor_Float;
+         first_x = Subtractor_Float;
          last_x_k = din_x;
-         //y[31:0] = Subtractor_Float(subset_centerpoint_y, half_subset_size);
-         //last_y_k = y[31:0];
-         a = subset_centerpoint_y;
-         b = half_subset_size;
-         state = 'b1111; //Call Subtractor
-         temp_state = 'b0010;
+         state = 'b1000010;
      end
-     'b0010:
+     'b1000010:
      begin
-         //y[k * 32 + 31 -: 32] = Subtractor_Float;
-         addr_y = k;
-         din_y = Subtractor_Float;
-         last_y_k = din_y;
-         k = k + 1;
-         //state = 4'b0011;
-         state = 'b0011;
+        a = subset_centerpoint_y;
+        b = half_subset_size;
+        state = 'b1111; //Subtractor
+        temp_state = 'b1000011;
      end
-     'b0011:
+     'b1000011:
      begin
-         if(lc < loop_counter)
-         begin          
-             pxl_cnt_Int = pxl_cnt_Int + 1;
-            //call floating_point adder
-            a = pxl_cnt_FP;
-            b = 'b00111111100000000000000000000000;
-            state = 'b1010; //Call Adder 
-            temp_state = 'b100101;           
-         end
-         else
-         begin
-             state = 'b1001;
-         end
+        addr_y = k;
+        din_y = Subtractor_Float;
+        last_y_k = din_y;
+        first_y = Subtractor_Float;
+        k = k + 1;
+        pxl_cnt_Int = pxl_cnt_Int + 1;
+        //call floating_point adder
+        a = pxl_cnt_FP;
+        b = 'b00111111100000000000000000000000;
+        state = 'b1010; //Adder 
+        temp_state = 'b1000100; 
      end
-     'b100101:
+     'b1000100:
      begin
-        pxl_cnt_FP = Adder_Float;       
-        state = 'b100010;
+        pxl_cnt_FP = Adder_Float;
+        a = subset_centerpoint_x;
+        b = half_subset_size;
+        state = 'b1010; //Adder
+        temp_state = 'b1000101;
      end
-     'b100010:
+     'b1000101:
      begin
-        //temp_reminder = lc % subset_size;
-        //temp_reminder = lc % 32'b11;
-        if(sub_pxl_counter == subset_size)
+        last_x = Adder_Float;
+        a = subset_centerpoint_y;
+        b = half_subset_size;
+        state = 'b1010; //Adder
+        temp_state = 'b1000110;
+     end
+     'b1000110:
+     begin
+        last_y = Adder_Float;
+        state = 'b1000111;
+     end
+     'b1000111:
+     begin
+        if(less_than_or_equal(last_x_k, last_x) && less_than_or_equal(last_y_k, last_y))
         begin
-            mod = 1'b0;
-            sub_pxl_counter = 32'b0;
+            if(less_than(last_x_k, last_x)) // x = x + 1, y = y
+            begin
+                a = last_x_k;
+                b = 32'b00111111100000000000000000000000; //1
+                state = 'b1010; //Adder
+                temp_state = 'b1001000;
+            end
+            else if(equal(last_x_k, last_x)) // x = cx - half, y = y + 1
+            begin
+                if(equal(last_y_k, last_y)) //exit
+                begin
+                    state = 'b1001010;
+                end
+                else
+                begin
+                    a = last_y_k;
+                    b = 32'b00111111100000000000000000000000; //1
+                    state = 'b1010; //Adder
+                    temp_state = 'b1001001;
+                end
+            end
         end
-        else
+        else //exit
         begin
-            mod = 1'b1;
+            state = 'b1001010;
         end
-        state = 'b100011;
      end
-     'b100011:
+     'b1001000:
      begin
-        state = 'b101101;
+        addr_x = k;
+        din_x = Adder_Float;
+        last_x_k = din_x;
+        addr_y = k;
+        din_y = last_y_k;
+        last_y_k = din_y;
+        k = k + 1;
+        pxl_cnt_Int = pxl_cnt_Int + 1;
+        //call floating_point adder
+        a = pxl_cnt_FP;
+        b = 'b00111111100000000000000000000000;
+        state = 'b1010; //Adder 
+        temp_state = 'b1001011;
      end
-     'b101101:
+     'b1001001:
      begin
-        state = 'b100100;
+        addr_y = k;
+        din_y = Adder_Float;
+        last_y_k = din_y;
+        addr_x = k;
+        din_x = first_x;
+        last_x_k = din_x;
+        k = k + 1;
+        pxl_cnt_Int = pxl_cnt_Int + 1;
+        //call floating_point adder
+        a = pxl_cnt_FP;
+        b = 'b00111111100000000000000000000000;
+        state = 'b1010; //Adder 
+        temp_state = 'b1001011;
      end
-     'b100100:
-     begin
-         //if(lc % subset_size == 32'b0)
-         if(mod == 1'b0)
-         begin
-             k1 = k;
-             state = 'b0100;
-         end
-         else
-         begin
-             k1 = k;
-             state = 'b0111;
-         end
-     end
-     'b0100:
-     begin
-         //x[k1-:32] = Adder_Float(last_x_k, 32'b00111111100000000000000000000000); //+1
-         a = last_x_k;
-         b = 32'b00111111100000000000000000000000;
-         state = 'b1010; //Call Adder
-         temp_state = 'b0101;
-     end
-     'b0101:
-     begin
-         //x[k1-:32] = Adder_Float;
-         addr_x = k;
-         din_x = Adder_Float;
-         //y[k1-:32] = Adder_Float(last_y_k, 32'b01000011111000000000000000000000); //+448
-         a = last_y_k;
-         b = 32'b01000011111000000000000000000000;
-         state = 'b1010; //Call Adder 
-         temp_state = 'b0110;
-     end
-     'b0110:
-     begin
-         //y[k1-:32] = Adder_Float;
-         addr_y = k;
-         din_y = Adder_Float;
-         //y[k1-:32] = Subtractor_Float(y[k1-:32], 32'b11000010111011000000000000000000); //-232/2 + 2 = -118
-         a = din_y;
-         b = 32'b11000010111011000000000000000000;
-         state = 'b1010; //Call Adder 
-         temp_state = 'b1000;
-     end
-     'b0111:
-     begin
-         //x[k1-:32] = last_x_k;
-         din_x = last_x_k;
-         addr_x = k;
-         //y[k1-:32] = Adder_Float(last_y_k, 32'b00111111100000000000000000000000); //+1
-         a = last_y_k;
-         b = 32'b00111111100000000000000000000000;
-         state = 'b1010; //Call Adder 
-         temp_state = 'b1000;
-     end
-     'b1000:
-     begin
-         din_y = Adder_Float;
-         addr_y = k;
-         last_x_k = din_x;
-         last_y_k = din_y;
-         k = k + 1;
-         lc = lc + 32'b1;
-         sub_pxl_counter = sub_pxl_counter + 32'b1;
-         state = 'b0011;
-     end
-     'b1001:
+     'b1001010:
      begin
         subset_counter = subset_counter + 1;
         state = 'b0;
-    end
+     end
+     'b1001011:
+     begin
+        pxl_cnt_FP = Adder_Float;
+        state = 'b1000111;
+     end
     'b100000:
     begin
         ea_x = 1'b1;
@@ -654,4 +646,45 @@ end //always
             end
         end
     endfunction 
+    
+    function less_than;
+        input [31:0] a;
+        input [31:0] b;
+        begin
+            if(a[31] == 1'b1 && b[31] == 1'b0)
+            begin
+                less_than = 1'b1;
+            end
+            else if(a[31] == 1'b0 && b[31] == 1'b1)
+            begin
+                less_than = 1'b0;
+            end
+            else
+            begin
+                if(a[30:0] < b[30:0])
+                begin
+                    less_than = 1'b1;
+                end
+                else
+                begin
+                    less_than = 1'b0;
+                end
+            end
+        end
+    endfunction
+    
+    function equal;
+        input [31:0] a;
+        input [31:0] b;
+        begin
+            if(a[31:0] == b[31:0])
+            begin
+                equal = 1'b1;
+            end
+            else 
+            begin
+                equal = 1'b0;
+            end
+        end
+    endfunction
 endmodule
