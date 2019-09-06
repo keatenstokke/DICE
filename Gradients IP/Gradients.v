@@ -666,7 +666,7 @@ begin
             state = temp_state;
         end
             
-        endcase // end of case statement  
+        endcase // end of case  
 end // end of always block
   
 endmodule
