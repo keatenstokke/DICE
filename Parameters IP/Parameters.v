@@ -140,6 +140,6 @@ module params_subs(
                     param_done = 1'b1;
                 end
             end         
-         endcase
+        endcase
     end
 endmodule
