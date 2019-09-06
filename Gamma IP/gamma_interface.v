@@ -34,7 +34,7 @@ module gam_interface(
         case(state)
         'b000000:
         begin
-            if(subset_done == 1'b0)
+            if(subset_done == 1'b0 && parameters_done == 1'b1)
             begin
                 // Read in and save the base address
                 if(subset_counter < num_of_subsets)
@@ -59,14 +59,24 @@ module gam_interface(
                         num_pxl_FP_reg[subset_range-:32] = num_pxl_FP_in;
                     end
                     // Go to start state
-                    state = 6'b000001;
+                    state = 'b1100; //6'b000001;
                 end
             end
             else
             begin
-                // Subsets is done procesing, so we can start
-                state = 6'b000001;
+                // Subsets is waiting for params_done and subset_done
+                state = 6'b000000;
             end
+        end
+        'b1100:
+        begin
+            if(subset_counter >= 1'b1)
+            begin
+                subset_range = (subset_counter - 1) * 32 + 31;
+                num_pxl_Int_reg[subset_range-:32] = num_pxl_Int_in;
+                num_pxl_FP_reg[subset_range-:32] = num_pxl_FP_in;
+            end
+            state = 'b000001; //6'b000001;
         end  
         'b000001:
         begin
