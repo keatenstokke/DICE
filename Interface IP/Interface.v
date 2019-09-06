@@ -13,21 +13,29 @@ module Read_Write(
     input [31:0] img_in_1,
     output reg [31:0] ref_img_out,
     output reg [31:0] def_img_out,
-    output reg [3:0] out_grad_wea_ints,
+    output reg [3:0] out_grad_wea_ints = 4'b0000,
     output reg [31:0] out_grad_gamma_addr_ints_0,
     output reg [31:0] out_grad_gamma_addr_ints_1
 );
     
     reg waiting = 1'b0;
-    reg state = 6'b0;
+    reg [5:0] state = 6'b000000;
     
     always @(posedge clock)
     begin
-    
         case(state)
         
         6'b000000:
         begin
+            if(grad_wea_ints == 1'b1)
+            begin
+                out_grad_wea_ints = 4'b1111;
+            end
+            else
+            begin
+                out_grad_wea_ints = 4'b0000;
+            end
+            
             if(new_frame == 32'b1)
             begin
                 state = 6'b000001;
@@ -39,21 +47,8 @@ module Read_Write(
                 waiting = 1'b1;
             end
         end
-        
+
         6'b000001:
-        begin
-            if(grad_wea_ints == 1'b1)
-            begin
-                out_grad_wea_ints = 4'b1111;
-            end
-            else
-            begin
-                out_grad_wea_ints = 4'b0000;
-            end
-            state = 6'b000010;
-        end
-        
-        6'b000010:
         begin
             // Read reference image to Gradients
             if(grad_busy == 1'b1)
@@ -132,7 +127,7 @@ module Read_Write(
                 ref_img_out[31:0] = img_in_1[31:0];
                 def_img_out[31:0] = img_in_0[31:0];
             end
-            state = 6'b000010;
+            state = 6'b000001;
         end
         
         endcase
