@@ -497,15 +497,18 @@ if __name__ == '__main__':
 	for output in outputs:
 		# Binary to Decimal
 		print 'received output: ' + str(output)
-		Input_int = int(output, 10)
-		Input_str = str(Bits(int = Input_int, length = 32).bin)
+		#Input_int = int(output, 10)
+		Input_int = long(output, 10)
+		#Input_str = str(Bits(int = Input_int, length = 32).bin)
+		#Input_str = str(bin(Input_int)[2:])
+		Input_str = '{:032b}'.format(Input_int)
 		pow = 0
 		fraction = 0
 
 		sign_str = Input_str[0]
 		exp_str = Input_str[1:9]
 		fraction_str = Input_str[9:32]
-
+		
 		sign = int(sign_str, 2)
 		#exp = int(exp_str, 2) - 127
 		exp = int(exp_str, 2)
