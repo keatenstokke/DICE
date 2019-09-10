@@ -30,7 +30,50 @@ void print_app_header()
 	xil_printf("TCP packets sent to port 7 will be echoed back\n\r");
 }
 
-// Converts a string to an integer
+// Converts an unsigned long integer to a string
+char *ultostr(unsigned long value, char *ptr, int base)
+{
+  unsigned long t = 0, res = 0;
+  unsigned long tmp = value;
+  int count = 0;
+
+  if (NULL == ptr)
+  {
+    return NULL;
+  }
+
+  if (tmp == 0)
+  {
+    count++;
+  }
+
+  while(tmp > 0)
+  {
+    tmp = tmp/base;
+    count++;
+  }
+
+  ptr += count;
+
+  *ptr = '\0';
+
+  do
+  {
+    res = value - base * (t = value / base);
+    if (res < 10)
+    {
+      * -- ptr = '0' + res;
+    }
+    else if ((res >= 10) && (res < 16))
+    {
+        * --ptr = 'A' - 10 + res;
+    }
+  } while ((value = t) != 0);
+
+  return(ptr);
+}
+
+// Converts an integer to a string
 char* my_itoa(int i, char b[])
 {
     char const digit[] = "0123456789";
@@ -103,7 +146,7 @@ int Dec_to_IEEE(float input)
 
 err_t recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
-	int Data_out_Echo_1, Data_out_Echo_2, Data_out_Echo_3;
+	unsigned long int Data_out_Echo_1, Data_out_Echo_2, Data_out_Echo_3;
 	int Data_in, Data_in_param, Data_out_param, Data_out_subset, Data_out_gamma;
 	int pixel_int, pixel_ieee_bin;
 	float pixel_float, Norm_pixel_float;
@@ -305,13 +348,25 @@ err_t recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 				results_address = results_address + 4;
 				Data_out_Echo_3 = XBram_In32(results_address);
 
+				//xil_printf("Data_out_Echo_1 = %u \n\r", Data_out_Echo_1);
+				//xil_printf("Data_out_Echo_2 = %u \n\r", Data_out_Echo_2);
+				//xil_printf("Data_out_Echo_3 = %u \n\r", Data_out_Echo_3);
+
 				// Calls the format function so each result is of length 10 so the Python script can break them apart
 				string_Data_out_Echo_1 = "";
 				string_Data_out_Echo_2 = "";
 				string_Data_out_Echo_3 = "";
-				string_Data_out_Echo_1 = my_itoa(Data_out_Echo_1, buffer_1);
-				string_Data_out_Echo_2 = my_itoa(Data_out_Echo_2, buffer_2);
-				string_Data_out_Echo_3 = my_itoa(Data_out_Echo_3, buffer_3);
+				//string_Data_out_Echo_1 = my_itoa(Data_out_Echo_1, buffer_1);
+				//string_Data_out_Echo_2 = my_itoa(Data_out_Echo_2, buffer_2);
+				//string_Data_out_Echo_3 = my_itoa(Data_out_Echo_3, buffer_3);
+
+				string_Data_out_Echo_1 = ultostr(Data_out_Echo_1, buffer_1, 10);
+				string_Data_out_Echo_2 = ultostr(Data_out_Echo_2, buffer_2, 10);
+				string_Data_out_Echo_3 = ultostr(Data_out_Echo_3, buffer_3, 10);
+
+				//printf("string_Data_out_Echo_1 = %s \n\r", string_Data_out_Echo_1);
+				//printf("string_Data_out_Echo_2 = %s \n\r", string_Data_out_Echo_2);
+				//printf("string_Data_out_Echo_3 = %s \n\r", string_Data_out_Echo_3);
 
 				// Resets the string we send back to the PC
 //				&concatted_out = "";
@@ -336,6 +391,7 @@ err_t recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 					strcat(&concatted_out, ",");
 				}
 				results_cnt = results_cnt + 1;
+				//printf("concatted_out = %s \n\r", concatted_out);
 				err = tcp_write(tpcb, &concatted_out, strlen(&concatted_out), 1);
 			}
 			else
