@@ -1,0 +1,194 @@
+Copyright 1986-2019 Xilinx, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2018.3.1 (win64) Build 2489853 Tue Mar 26 04:20:25 MDT 2019
+| Date         : Wed Sep 11 12:39:54 2019
+| Host         : DESKTOP-GG6LOIC running 64-bit major release  (build 9200)
+| Command      : report_drc -file design_1_wrapper_drc_opted.rpt -pb design_1_wrapper_drc_opted.pb -rpx design_1_wrapper_drc_opted.rpx
+| Design       : design_1_wrapper
+| Device       : xczu7ev-ffvc1156-2-e
+| Speed File   : -2
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------
+
+Report DRC
+
+Table of Contents
+-----------------
+1. REPORT SUMMARY
+2. REPORT DETAILS
+
+1. REPORT SUMMARY
+-----------------
+            Netlist: netlist
+          Floorplan: design_1
+      Design limits: <entire design considered>
+           Ruledeck: default
+             Max violations: <unlimited>
+             Violations found: 31
++-----------+----------+--------------------------------------------+------------+
+| Rule      | Severity | Description                                | Violations |
++-----------+----------+--------------------------------------------+------------+
+| DPIP-2    | Warning  | Input pipelining                           | 9          |
+| DPOP-3    | Warning  | PREG Output pipelining                     | 8          |
+| DPOP-4    | Warning  | MREG Output pipelining                     | 8          |
+| REQP-1774 | Warning  | RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32 | 6          |
++-----------+----------+--------------------------------------------+------------+
+
+2. REPORT DETAILS
+-----------------
+DPIP-2#1 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#2 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#3 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#4 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#5 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#6 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#7 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2/A[29:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#8 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPIP-2#9 Warning
+Input pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1 input design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1/B[17:0] is not pipelined. Pipelining DSP48 input will improve performance.
+Related violations: <none>
+
+DPOP-3#1 Warning
+PREG Output pipelining  
+DSP design_1_i/Gamma_Aff_0/inst/Gamma_Aff_v1_0_S00_AXI_inst/TestGamma/product0__0 output design_1_i/Gamma_Aff_0/inst/Gamma_Aff_v1_0_S00_AXI_inst/TestGamma/product0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#2 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#3 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#4 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#5 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#6 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#7 Warning
+PREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/product0__0 output design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/product0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-3#8 Warning
+PREG Output pipelining  
+DSP design_1_i/SubsetCoordsMulti_0/inst/SubsetCoordsMulti_v1_0_S00_AXI_inst/TestSubCo/product0__0 output design_1_i/SubsetCoordsMulti_0/inst/SubsetCoordsMulti_v1_0_S00_AXI_inst/TestSubCo/product0__0/P[47:0] is not pipelined (PREG=0). Pipelining the DSP48 output will improve performance and often saves power so it is suggested whenever possible to fully pipeline this function.  If this DSP48 function was inferred, it is suggested to describe an additional register stage after this function.  If the DSP48 was instantiated in the design, it is suggested to set the PREG attribute to 1.
+Related violations: <none>
+
+DPOP-4#1 Warning
+MREG Output pipelining  
+DSP design_1_i/Gamma_Aff_0/inst/Gamma_Aff_v1_0_S00_AXI_inst/TestGamma/product0__0 multiplier stage design_1_i/Gamma_Aff_0/inst/Gamma_Aff_v1_0_S00_AXI_inst/TestGamma/product0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#2 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#3 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#4 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#5 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints0__2/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#6 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/addr_ints1/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#7 Warning
+MREG Output pipelining  
+DSP design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/product0__0 multiplier stage design_1_i/GradientsMulti_1/inst/GradientsMulti_v1_0_S00_AXI_inst/TestGrad/product0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+DPOP-4#8 Warning
+MREG Output pipelining  
+DSP design_1_i/SubsetCoordsMulti_0/inst/SubsetCoordsMulti_v1_0_S00_AXI_inst/TestSubCo/product0__0 multiplier stage design_1_i/SubsetCoordsMulti_0/inst/SubsetCoordsMulti_v1_0_S00_AXI_inst/TestSubCo/product0__0/P[47:0] is not pipelined (MREG=0). Pipelining the multiplier function will improve performance and will save significant power so it is suggested whenever possible to fully pipeline this function.  If this multiplier was inferred, it is suggested to describe an additional register stage after this function.  If there is no registered adder/accumulator following the multiply function, two pipeline stages are suggested to allow both the MREG and PREG registers to be used.  If the DSP48 was instantiated in the design, it is suggested to set both the MREG and PREG attributes to 1 when performing multiply functions.
+Related violations: <none>
+
+REQP-1774#1 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_2/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[0].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+REQP-1774#2 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_2/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[1].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+REQP-1774#3 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_8/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[0].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+REQP-1774#4 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_8/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[1].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+REQP-1774#5 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_9/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[0].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+REQP-1774#6 Warning
+RAMB36E2_WRITE_WIDTH_A_18_doesnt_use_WEA32  
+The RAMB36E2 cell design_1_i/blk_mem_gen_9/U0/inst_blk_mem_gen/gnbram.gnative_mem_map_bmg.native_mem_map_blk_mem_gen/valid.cstr/ramloop[1].ram.r/prim_noinit.ram/DEVICE_8SERIES.WITH_BMM_INFO.TRUE_DP.SIMPLE_PRIM36.SERIES8_TDP_SP36_NO_ECC_ATTR.ram has WRITE_WIDTH_A set to 18. The WEA[3:2] pins should not be connected to active signal.
+Related violations: <none>
+
+
